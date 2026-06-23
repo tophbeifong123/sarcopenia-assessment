@@ -203,7 +203,13 @@ with col2:
     st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
 
     st.subheader("Real-Time Event Logs")
+    log_filter = st.selectbox(
+        "กรองประเภท Log (Filter Logs)",
+        ["ทั้งหมด (Show All)", "เฉพาะเป้าหมายปรากฏ (Appearances)", "เฉพาะการชนเป้าหมาย (Hits)", "เฉพาะเป้าหมายพลาด (Misses)", "เฉพาะการยกแขน (Arm Raises)"],
+        key="log_filter_select"
+    )
     log_placeholder = st.empty()
+    log_download_placeholder = st.empty()
     
     st.subheader("Live Movement Telemetry")
     tel_cols = st.columns(2)
@@ -216,17 +222,56 @@ with col2:
         right_angle_metric = st.empty()
         right_reps_metric = st.empty()
 
-# Initialize log lists
-log_lines = [
-    "Initializing Automated Dexterity Assessment Pipeline...",
-    "Ready. Upload a video and press 'Start Analysis'."
-]
+# Initialize log lists in session state for persistence across Streamlit reruns
+if "log_lines" not in st.session_state:
+    st.session_state.log_lines = [
+        "Initializing Automated Dexterity Assessment Pipeline...",
+        "Ready. Upload a video and press 'Start Analysis'."
+    ]
 
-def render_logs(lines):
-    formatted = "<br>".join(lines[::-1])  # Reverse logs (latest on top)
+def filter_and_format_logs(lines, filter_type):
+    filtered_lines = []
+    for line in lines:
+        if filter_type == "เฉพาะเป้าหมายปรากฏ (Appearances)" and "appeared" not in line:
+            continue
+        elif filter_type == "เฉพาะการชนเป้าหมาย (Hits)" and "HIT" not in line:
+            continue
+        elif filter_type == "เฉพาะเป้าหมายพลาด (Misses)" and "disappeared" not in line:
+            continue
+        elif filter_type == "เฉพาะการยกแขน (Arm Raises)" and "Raise" not in line:
+            continue
+        
+        # Color highlighting based on log categories
+        if "appeared" in line:
+            colored = f"<span style='color: #38BDF8;'>{line}</span>"
+        elif "HIT" in line:
+            colored = f"<span style='color: #34D399; font-weight: bold;'>{line}</span>"
+        elif "disappeared" in line:
+            colored = f"<span style='color: #F87171;'>{line}</span>"
+        elif "Raise" in line:
+            colored = f"<span style='color: #FBBF24;'>{line}</span>"
+        else:
+            colored = f"<span style='color: #94A3B8;'>{line}</span>"
+        filtered_lines.append(colored)
+    return filtered_lines
+
+def render_logs(lines, filter_type):
+    colored_lines = filter_and_format_logs(lines, filter_type)
+    formatted = "<br>".join(colored_lines[::-1])  # Reverse logs (latest on top)
     log_placeholder.markdown(f"<div class='log-container'>{formatted}</div>", unsafe_allow_html=True)
+    
+    # Text-only format download of the full log lines
+    log_text = "\n".join(lines)
+    log_download_placeholder.download_button(
+        label="📥 ดาวน์โหลด Event Logs (.txt)",
+        data=log_text,
+        file_name="dexterity_event_logs.txt",
+        mime="text/plain",
+        key=f"dl_btn_{len(lines)}" # dynamic key to update button state
+    )
 
-render_logs(log_lines)
+log_lines = st.session_state.log_lines
+render_logs(log_lines, log_filter)
 rec_status_placeholder.markdown("<div class='status-badge-demo'>WAITING</div>", unsafe_allow_html=True)
 active_cell_placeholder.markdown("<div class='metric-card' style='padding:5px; margin:0;'>ไม่มี</div>", unsafe_allow_html=True)
 
@@ -263,12 +308,13 @@ if uploaded_file is not None:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
-        log_lines = [
+        st.session_state.log_lines = [
             "Initializing Dual Computer Vision ...",
             f"Video format: {width}x{height} @ {fps:.1f} fps",
             "Processing frames... (Pose & Target)"
         ]
-        render_logs(log_lines)
+        log_lines = st.session_state.log_lines
+        render_logs(log_lines, log_filter)
         
         # Setup VideoWriter if needed
         writer = None
@@ -643,7 +689,7 @@ if uploaded_file is not None:
             left_hits_placeholder.markdown(f"<div class='metric-card'><div class='metric-val'>{left_hits_count}</div>Hits</div>", unsafe_allow_html=True)
             right_hits_placeholder.markdown(f"<div class='metric-card'><div class='metric-val'>{right_hits_count}</div>Hits</div>", unsafe_allow_html=True)
             
-            render_logs(log_lines)
+            render_logs(log_lines, log_filter)
             
             if writer:
                 writer.write(annotated_frame)
@@ -698,7 +744,7 @@ if uploaded_file is not None:
         st.session_state.frame_history = local_frame_history
             
         log_lines.append("Assessment completed successfully!")
-        render_logs(log_lines)
+        render_logs(log_lines, log_filter)
         
         # Calculate kinematics summaries
         left_avg_speed = np.mean(left_reaction_times) if left_reaction_times else 0.0
