@@ -1,99 +1,144 @@
-# 🦾 Dexterity & Sarcopenia Analyzer (ระบบวิเคราะห์ความคล่องมือและภาวะฝืนไม่ใช้งานแขน)
+# 🦾 KONKAE (คนแก่) - Dexterity & Sarcopenia Analyzer & Reaching Game
 
-เว็บแอปพลิเคชันแบบ Interactive สร้างด้วย **Streamlit** และประมวลผลวิดีโอด้วยระบบ **Dual Computer Vision (OpenCV + MediaPipe)** สำหรับวิเคราะห์วิดีโอประเมิน Sarcopenia และความคล่องมือ (Hand Dexterity) โดยทำการประมวลผลหาค่าการชนเป้าหมาย (Target Collision) และการยกแขนแบบเฟรมต่อเฟรม (Frame-by-Frame Real-Time Logs) พร้อมประเมินความเสี่ยงต่อภาวะ Learned Non-Use ของผู้ป่วยอย่างละเอียด
+ยินดีต้อนรับสู่โปรเจกต์ **KONKAE.COM (คนแก่)** ระบบวิเคราะห์ความคล่องตัวของมือและภาวะฝืนไม่ใช้งานแขน (Learned Non-Use) เพื่อประเมินความเสี่ยงโรคกล้ามเนื้อฝ่อลีบ (Sarcopenia) และความเสี่ยงต่อการหกล้มในผู้สูงอายุ พัฒนาขึ้นสำหรับการแข่งขัน **Digital Aiding 4 Aging Hackathon** โดย Toto และ King
 
----
-
-## 🌟 ฟีเจอร์หลัก (Core Features)
-
-1. **ระบบตรวจจับเป้าหมายสี (Target Box Detection)**
-   * ค้นหาและระบุเป้าหมายสี (เขียว, แดง, น้ำเงิน) ด้วยการแปลงปริภูมิสีเป็น HSV และสแกนสัดส่วนพื้นที่กล่องบนกริด 3x3 โดยกรองสัญญาณรบกวนฉากหลังออกอย่างเหมาะสม (>10% Area Ratio)
-   * รองรับเป้าหมายแบบปรากฏตัวพร้อมกันหลายช่องพร้อมเก็บสถานะแบบอิสระ (Multi-Target Tracking State Machine)
-2. **ระบบวิเคราะห์การชนเป้าหมาย (Collision Checking)**
-   * ตรวจวัดพิกัดข้อมือหรือปลายนิ้วชี้ของผู้ป่วยว่าชนเข้ากับกล่องเป้าหมายที่กำลังแอคทีฟบนหน้าจอหรือไม่ โดยผู้ป่วยต้องทาบมือค้างไว้ในเป้าหมายอย่างน้อย `N` เฟรมติดต่อกัน (ปรับความไวได้)
-3. **ระบบวัดมุมสะบักไหล่และการยกแขน (Arm Elevation Angle & Reps)**
-   * คำนวณองศาข้อต่อแขน (ไหล่-ข้อศอก-สะโพก) เพื่อตรวจนับจำนวนครั้งที่ผู้ป่วยยกแขนสูงเกิน 60 องศา (Reps Counter)
-4. **ระบบตรวจจับความกระตุก / ความลื่นไหลในการเคลื่อนที่ (Smoothness & Jitter)**
-   * บันทึกความเร่งและความสะดุดของการเคลื่อนข้อมือ เพื่อประเมินคะแนนความลื่นไหลของข้อต่อ (Smoothness %)
-5. **ระบบปรับแต่งตำแหน่งตารางกริด (Grid Bounds Alignment)**
-   * แก้ไขปัญหาขอบดำซ้ายขวาในคลิปวิดีโอ (Pillarbox/Letterbox) ด้วยการเลือก Preset:
-     * **Fit Video Frame (Default)**: กริดเต็มความกว้างเฟรม
-     * **Center 4:3 (Pillarbox)**: ย่อและจัดกรอบตาราง 4:3 ให้อยู่ตรงกลางวิดีโอ (เหมาะกับคลิปทดสอบ `67-R-cut.mp4` / `60-L-cut.mp4`)
-     * **Custom Margins**: ปรับแถบเลื่อนระยะขอบตารางได้อิสระเอง
-6. **ตัวสร้างรายงานสรุปความเสี่ยง Learned Non-Use**
-   * ประเมินอัตราส่วนการสลับยื่นมือ, ความลื่นไหล, และมุมไหล่ยก เพื่อคาดการณ์ความเสี่ยงในการ "ลืม" วิธีการใช้แขนข้างที่อ่อนแรง (High / Moderate / Low Risk)
-7. **ส่งออกข้อมูลดิบเป็น CSV และวิดีโอวิเคราะห์**
-   * สามารถดาวน์โหลดไฟล์ผลวิเคราะห์รายเฟรมอย่างละเอียด (CSV) และวิดีโอที่พ่นจุดแลนด์มาร์กข้อต่อทับแล้ว (Annotated Video)
+โปรเจกต์นี้ประกอบไปด้วย 2 ส่วนหลักที่ทำงานร่วมกัน:
+1. **Interactive Web App (Next.js)**: ระบบวิเคราะห์แบบ Real-Time ผ่านเว็บแคม ทำงานบนอุปกรณ์ฝั่งผู้ใช้ (On-Device Client) ด้วย MediaPipe WebAssembly
+2. **Video Upload Analyzer (Python Streamlit)**: ระบบประมวลผลวิดีโอออฟไลน์ (Offline Video Analyzer) แบบเฟรมต่อเฟรม (Frame-by-Frame Logs) สำหรับวิดีโอที่บันทึกไว้ล่วงหน้า
 
 ---
 
-## 🛠️ ความต้องการของระบบ (Prerequisites)
+## 📐 สถาปัตยกรรมการทำงาน (System Architecture)
 
-* **Python 3.11** (แนะนำเป็นอย่างยิ่ง เนื่องจากไลบรารี MediaPipe 0.10.x เสถียรและรองรับ Legacy Solutions บนเวอร์ชันนี้อย่างสมบูรณ์แบบที่สุดบน Windows)
-* ระบบปฏิบัติการ Windows / macOS / Linux
+```mermaid
+graph TD
+    subgraph Frontend [1. Interactive Live Web App - Next.js]
+        A[ผู้ป่วย / ผู้ใช้งาน] -->|ทำแบบประเมินผ่านเว็บแคม| B(Next.js Frontend: localhost:3000)
+        B -->|MediaPipe WASM| C[ตรวจจับจุดเชื่อมต่อของร่างกาย On-Device]
+        C -->|เกมทดสอบการเอื้อมมือ 9-Grid| D[ประมวลผล Kinematics & Telemetry แบบเรียลไทม์]
+        D -->|AI Report Engine| E[รายงานผลประเมิน & ระดับความเสี่ยง Learned Non-Use]
+    end
+
+    subgraph Backend [2. Offline Video Analyzer - Streamlit]
+        F[ไฟล์วิดีโอที่บันทึกไว้] -->|อัปโหลดไฟล์วิดีโอ| G(Streamlit Backend: localhost:8501)
+        G -->|OpenCV + MediaPipe| H[ตรวจจับเป้าหมายสี HSV & โครงสร้างกระดูก]
+        H -->|วิเคราะห์การชนตาราง & องศาข้อต่อ| I[บันทึก Event Logs & คำนวณความเสี่ยง LNU]
+        I -->|ส่งออกผลลัพธ์| J[ดาวน์โหลด CSV Log & วิดีโอวิเคราะห์]
+    end
+    
+    B <-->|สลับการใช้งานผ่านเมนูนำทาง| G
+```
+
+---
+
+## 📂 โครงสร้างโปรเจกต์ (Project Structure)
+
+* **[app.py](file:///d:/vibe-hack-real/sarcopenia-assessment/app.py)**: ซอร์สโค้ดระบบประมวลผลไฟล์วิดีโอออฟไลน์ (Python Streamlit)
+* **[web/](file:///d:/vibe-hack-real/sarcopenia-assessment/web)**: ไดเรกทอรีแอปพลิเคชันระบบประเมินเว็บแคม (Next.js)
+  * **[web/src/app/page.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/app/page.tsx)**: โครงสร้างหลักของหน้า Dashboard ของเกม 9-Grid และการเชื่อมต่ออุปกรณ์
+  * **[web/src/components/LiveVision.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/components/LiveVision.tsx)**: คอมโพเนนต์จัดการ Web Camera และประมวลผล MediaPipe Pose ผ่าน WebAssembly CDN
+  * **[web/src/components/EvaluationDashboard.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/components/EvaluationDashboard.tsx)**: ระบบแดชบอร์ดสรุปคะแนนประเมิน รายงานทางคลินิก และแผนการฟื้นฟู
+  * **[web/src/app/api/generate-report/route.ts](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/app/api/generate-report/route.ts)**: API สำหรับคำนวณและสร้างรายงานประเมินความเสี่ยง Learned Non-Use และการหกล้ม (Fall Risk)
+  * **[web/package.json](file:///d:/vibe-hack-real/sarcopenia-assessment/web/package.json)**: ข้อมูลไลบรารีและสคริปต์รันของ Next.js
 
 ---
 
 ## 🚀 ขั้นตอนการติดตั้งและการเริ่มใช้งาน (Setup & Run)
 
-### 1. โคลนและเปิดไดเรกทอรีโปรเจกต์
-```bash
-git clone <URL_ของ_REPOSITORY_ที่คุณสร้าง>
-cd sarcopenia_assessment
-```
+### 1. ระบบวิเคราะห์ผ่านเว็บแคม (Next.js Web App)
 
-### 2. สร้าง Virtual Environment และเรียกใช้งาน (แนะนำ)
-* **Windows**:
-  ```bash
-  py -3.11 -m venv .venv
-  .venv\Scripts\activate
-  ```
-* **macOS / Linux**:
-  ```bash
-  python3.11 -m venv .venv
-  source .venv/bin/activate
-  ```
+ระบบทำงานบน Next.js 16 + React 19 และประมวลผล MediaPipe WASM บนเบราว์เซอร์ของผู้ใช้โดยตรง
 
-### 3. ติดตั้งไลบรารีที่จำเป็น
-```bash
-pip install --upgrade pip
-pip install streamlit opencv-python mediapipe numpy pandas
-```
+#### **ขั้นตอนการเปิดใช้งาน:**
+1. ไปที่ไดเรกทอรี `web`:
+   ```bash
+   cd web
+   ```
+2. ติดตั้ง Dependencies:
+   ```bash
+   npm install
+   ```
+3. รันเซิร์ฟเวอร์สำหรับพัฒนา (Development Server):
+   ```bash
+   npm run dev
+   ```
+4. เปิดเบราว์เซอร์ไปที่: **http://localhost:3000**
 
-### 4. รันเซิร์ฟเวอร์ Streamlit
-```bash
-streamlit run app.py
-```
-หลังจากรันคำสั่ง ตัวแอปพลิเคชันจะเปิดขึ้นบนเบราว์เซอร์ของคุณที่ที่อยู่: **http://localhost:8501** โดยอัตโนมัติ
+---
+
+### 2. ระบบวิเคราะห์วิดีโอออฟไลน์ (Streamlit Video Analyzer)
+
+ระบบนี้ใช้สำหรับอัปโหลดไฟล์วิดีโอประเมินผลเพื่อสแกนเฟรมต่อเฟรม เหมาะสำหรับคลินิกหรือนักกายภาพที่ต้องการสแกนวิดีโอที่บันทึกไว้
+
+#### **ความต้องการของระบบ (Prerequisites):**
+* **Python 3.11** (แนะนำสำหรับการรองรับ MediaPipe และ OpenCV อย่างเสถียรที่สุดบน Windows)
+
+#### **ขั้นตอนการเปิดใช้งาน:**
+1. กลับมาที่โฟลเดอร์ Root ของโปรเจกต์:
+   ```bash
+   cd ..
+   ```
+2. สร้าง Virtual Environment และเปิดใช้งาน:
+   * **Windows (PowerShell/CMD)**:
+     ```bash
+     python -m venv .venv
+     .venv\Scripts\activate
+     ```
+   * **macOS / Linux**:
+     ```bash
+     python3.11 -m venv .venv
+     source .venv/bin/activate
+     ```
+3. ติดตั้งไลบรารีทั้งหมด:
+   ```bash
+   pip install --upgrade pip
+   pip install streamlit opencv-python mediapipe numpy pandas
+   ```
+4. รันแอปพลิเคชัน Streamlit:
+   ```bash
+   streamlit run app.py
+   ```
+5. ระบบจะเปิดให้ใช้งานผ่าน: **http://localhost:8501** โดยอัตโนมัติ
+
+---
+
+## 🌟 ฟีเจอร์หลักของแต่ละระบบ (Detailed System Features)
+
+### 🎮 1. ระบบวิเคราะห์ผ่านเว็บแคม (Next.js Reaching Game)
+* **9-Grid Interactive Game**: เกมทดสอบเอื้อมแตะ 9 ช่องบนหน้าจอแบบจับเวลา 90 วินาที เพื่อดูความถูกต้องแม่นยำและทิศทางการเคลื่อนไหวของมือ
+* **Posture Calibration System**: ผู้ใช้ต้องยืนวางมือสองข้างในพิกัดบนที่กำหนด (START POSTURE L / R) ค้างไว้เพื่อทดสอบตำแหน่งก่อนเริ่มเกมเพื่อความเที่ยงตรงในการประเมิน
+* **Live Kinematics & Telemetry Charts**: พล็อตกราฟสดแสดงความเร็วของการเคลื่อนไหว (px/s), มุมองศาข้อต่อ, ความราบรื่น และ Jitter
+* **Learned Non-Use Index (LNI)**: คำนวณอัตราส่วนการสลับใช้แขนและประเมินพฤติกรรมการฝืนไม่ใช้งานแขนข้างที่อ่อนแรง
+* **Interactive Evaluation Report & Rehab Plan**: สร้างแผนกายภาพฟื้นฟูเบื้องต้นรายบุคคล และประเมินความเสี่ยงต่อการลื่นหกล้ม (Fall Risk) สามารถพิมพ์ออกเป็นไฟล์เอกสารได้ทันที
+
+### 📼 2. ระบบวิเคราะห์วิดีโอออฟไลน์ (Streamlit Analyzer)
+* **Target Box HSV Detection**: ตรวจจับกล่องเป้าหมายสี (เขียว, แดง, น้ำเงิน) จากวิดีโอโดยแปลงพื้นที่สีเป็น HSV และคำนวณพื้นที่ (Area Ratio > 10%) เพื่อลดสัญญาณรบกวนของฉากหลัง
+* **Collision Checking State Machine**: สแกนการทับซ้อน (Collision) ระหว่างตำแหน่งข้อมือ/ปลายนิ้ว กับเป้าหมาย โดยตรวจสอบการทาบมือค้างไว้ครบจำนวนเฟรมที่ตั้งค่า (`N` Frames)
+* **Arm Elevation Angle & Reps**: วัดมุมไหล่-ข้อศอก-สะโพก และนับจำนวนครั้ง (Reps) ที่ยกแขนสูงกว่า 60 องศา
+* **Grid Bounds Preset Adjustments**: แก้ปัญหาวิดีโอติดขอบดำ (Pillarbox/Letterbox) ด้วยการเลือก Grid Preset:
+  * *Fit Video Frame*: ตารางเต็มความกว้าง
+  * *Center 4:3*: จัดกล่องให้อยู่ตรงกลางวิดีโอขนาด 4:3 (เหมาะกับคลิปทดสอบ `67-R-cut.mp4` / `60-L-cut.mp4`)
+  * *Custom Margins*: เลื่อนปรับขอบความกว้างตารางได้ตามความเหมาะสม
+* **Export Analyzer Logs**: ดาวน์โหลดไฟล์ CSV แสดงผลวิเคราะห์แบบวินาทีต่อวินาที และดาวน์โหลดไฟล์วิดีโอแบบวาดเส้นจุดเชื่อมโครงร่าง (Annotated Video) กลับไปใช้ประกอบประเมินผลได้
 
 ---
 
 ## 📊 รายละเอียด Event Logs ที่ประมวลผล (Log Specifications)
 
-ระบบจะพ่น Log ออกมาแบบ Real-time ตามรูปแบบสากล (ตรงตามมาตรฐานของรูปทดสอบ) ดังนี้:
-* `Initializing Dual Computer Vision ...` (เริ่มต้นระบบตรวจจับ)
-* `Video format: 1920x1080 @ 30.0 fps` (สเปกวิดีโอที่อัปโหลด)
-* `Processing frames... (Pose & Target)`
-* `[Frame X] Target Y appeared on [LEFT/CENTER/RIGHT]` (เมื่อเป้าหมายปรากฏ)
-* `[Frame X] Target Y HIT by [LEFT/RIGHT] Hand` (เมื่อชนเป้าหมายสำเร็จ)
-* `[Frame X] Target Y disappeared (MISSED)` (เมื่อเป้าหมายหายไปโดยไม่ถูกกด)
-* `[Frame X] Left/Right Arm Raise #Z (Angle: A.A)` (เมื่อผู้ป่วยยกแขนและองศาสะบักไหล่)
+ทั้งสองระบบตรวจวัดและสร้างชุดข้อมูลประเมินผลตามรูปแบบมาตรฐานเดียวกันดังนี้:
+* `[Frame X] Target Y appeared on [LEFT/CENTER/RIGHT]` (เมื่อเป้าหมายปรากฏตัวบนตาราง)
+* `[Frame X] Target Y HIT by [LEFT/RIGHT] Hand` (เมื่อชนเป้าหมายสำเร็จด้วยมือซ้าย/ขวา)
+* `[Frame X] Target Y disappeared (MISSED)` (เมื่อเป้าหมายหายไปโดยไม่ถูกเอื้อมแตะ)
+* `[Frame X] Left/Right Arm Raise #Z (Angle: A.A)` (เมื่อยกแขนสูงและคำนวณองศา)
 
 ---
 
-## 📂 โครงสร้างไฟล์ในโปรเจกต์ (Project Structure)
+## 🤝 การพัฒนาต่อยอดย่อย (Developer Guide)
 
-```text
-sarcopenia_assessment/
-│
-├── app.py             # ซอร์สโค้ดหลักของ Streamlit UI และลูปประมวลผลวิดีโอทั้งหมด
-├── README.md          # เอกสารแนะนำการติดตั้งและพัฒนาภาษาไทยนี้
-└── .gitignore         # ไฟล์ข้ามการอัปโหลดไฟล์ขยะ ระบบ venv หรือวิดีโอชั่วคราว
-```
+1. **การปรับแต่งช่วงสีในการตรวจจับ (HSV Color Ranges)**:
+   สามารถเข้าไปแก้ไขอาร์เรย์ช่วงค่าสีในชุดคำสั่ง `cv2.inRange` บรรทัดที่ `350-362` ในไฟล์ [app.py](file:///d:/vibe-hack-real/sarcopenia-assessment/app.py) หากวิดีโอมีการเปลี่ยนแปลงของแสงไฟในห้องทดสอบ
+2. **การเปลี่ยนจุดพิกัดตรวจจับการชน (Tracking Reference Points)**:
+   ปรับเปลี่ยนตำแหน่งดัชนีจุดตรวจจับนิ้วมือ/ข้อมือในกลไกของแอป Next.js ได้โดยอ้างอิงรหัสดัชนีของ MediaPipe Pose ใน [LiveVision.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/components/LiveVision.tsx) และ [kinematics.ts](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/lib/kinematics.ts)
 
 ---
-
-## 🤝 การพัฒนาต่อยอด (Contribution Guide)
-สำหรับเพื่อนๆ ที่มารับช่วงต่อเพื่อพัฒนาโปรเจกต์:
-1. **HSV Color Ranges**: หากต้องการเปลี่ยนการตอบสนองความไวต่อแสงสีเขียวของเป้าหมาย สามารถเข้าปรับแต่งค่าอาร์เรย์ในคำสั่ง `cv2.inRange` ช่วงบรรทัดที่ `350-362` ใน `app.py`
-2. **MediaPipe Tracking Point**: หากต้องการเปลี่ยนตำแหน่งอ้างอิงของการชนนอกเหนือจากข้อมือ (Wrist - จุด 0) หรือปลายนิ้วชี้ (Index Finger Tip - จุด 8) สามารถศึกษาเลขดัชนีแลนด์มาร์กเพิ่มเติมแล้วเพิ่มตัวเลือกได้ในส่วน `ref_point_mode`
+*จัดทำขึ้นโดยทีมพัฒนา **KONKAE** ในการประกวด Digital Aiding 4 Aging Hackathon 🦾*

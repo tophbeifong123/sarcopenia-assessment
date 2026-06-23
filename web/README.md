@@ -1,8 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🦾 KONKAE (คนแก่) - Interactive Webcam Reaching Game (Next.js App)
 
-## Getting Started
+This directory contains the **Next.js Web Application** for the **KONKAE (คนแก่)** Dexterity & Sarcopenia Analyzer project, developed for the **Digital Aiding 4 Aging Hackathon** by Toto and King.
 
-First, run the development server:
+It provides an interactive, client-side, on-device webcam clinical reaching test (9-Grid layout) utilizing MediaPipe Pose WebAssembly and renders real-time telemetry graphs along with clinical reports.
+
+For the full project details, architecture, and documentation, please refer to the main [Root README.md](file:///d:/vibe-hack-real/sarcopenia-assessment/README.md).
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Node.js** (v18 or higher recommended)
+- **NPM** or another package manager (Yarn, Pnpm, Bun)
+
+### Installation
+
+Install the project dependencies:
+
+```bash
+npm install
+```
+
+### Run the Development Server
+
+Start the Next.js server locally:
 
 ```bash
 npm run dev
@@ -14,23 +37,13 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📂 Key Components in this Folder
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* **[src/app/page.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/app/page.tsx)**: Main game page containing the 9-Grid trial layout, game loops, and UI controls.
+* **[src/components/LiveVision.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/components/LiveVision.tsx)**: Manages webcam feeds and interacts with MediaPipe Pose via CDN integration.
+* **[src/components/EvaluationDashboard.tsx](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/components/EvaluationDashboard.tsx)**: Interactive assessment results and generated clinical rehabilitation plan.
+* **[src/app/api/generate-report/route.ts](file:///d:/vibe-hack-real/sarcopenia-assessment/web/src/app/api/generate-report/route.ts)**: API handler for evaluating the Learned Non-Use (LNI) metrics and fall risk warnings.
