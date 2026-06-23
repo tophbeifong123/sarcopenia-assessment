@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+*.mp4
+*.avi
+*.mov
+*.webm
+*.csv
+.streamlit/
+.idea/
+.vscode/
