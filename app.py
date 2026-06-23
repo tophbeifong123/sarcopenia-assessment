@@ -138,6 +138,17 @@ st.markdown("<h4 style='color: #94A3B8; margin-bottom: 0; font-family: Outfit, s
 st.markdown("<h1 style='margin-top: 0; color: #FFFFFF; font-family: Outfit, sans-serif; font-weight: 700;'>Dexterity & Sarcopenia Analyzer</h1>", unsafe_allow_html=True)
 
 # --- Sidebar ---
+st.sidebar.markdown("""
+<div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
+    <span style="color: #38BDF8; font-weight: bold; font-size: 13px; display: block; margin-bottom: 8px;">🌐 ระบบประเมินร่วมทางคลินิก</span>
+    <a href="http://localhost:3000" target="_self" style="text-decoration: none;">
+        <button style="background: #06B6D4; color: #0F172A; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s; width: 100%;">
+            🎥 เปิดระบบกล้องสด (Live Webcam)
+        </button>
+    </a>
+</div>
+""", unsafe_allow_html=True)
+
 st.sidebar.title("Assessment Settings")
 
 min_frames_in_box = st.sidebar.slider("Min Frames for HIT (Sensitivity)", 2, 20, 3, step=1)
