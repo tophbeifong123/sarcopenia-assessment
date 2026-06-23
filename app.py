@@ -8,7 +8,7 @@ import time
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="Sarcopenia & Hand Dexterity Dashboard",
+    page_title="KONKAE.COM",
     page_icon="🦾",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -133,21 +133,190 @@ def calculate_shoulder_angle(shoulder, elbow, hip):
     return float(np.degrees(theta))
 
 
+class TemporalSmoother:
+    def __init__(self, window_size=5):
+        self.window_size = window_size
+        self.history = []
+        
+    def smooth(self, pt):
+        """pt is a dictionary with keys 'x', 'y', 'z'."""
+        self.history.append(pt)
+        if len(self.history) > self.window_size:
+            self.history.pop(0)
+        avg_x = sum(p['x'] for p in self.history) / len(self.history)
+        avg_y = sum(p['y'] for p in self.history) / len(self.history)
+        avg_z = sum(p['z'] for p in self.history) / len(self.history)
+        return {'x': avg_x, 'y': avg_y, 'z': avg_z}
+
+
+def dist_3d_norm(p1, p2):
+    """Calculates 3D Euclidean distance in normalized coordinate space."""
+    dx = p1['x'] - p2['x']
+    dy = p1['y'] - p2['y']
+    dz = p1['z'] - p2['z']
+    return float(np.sqrt(dx**2 + dy**2 + dz**2))
+
+
+def get_kinematics_card_html(
+    frame_idx,
+    fps,
+    total_hits,
+    left_speeds,
+    right_speeds,
+    left_jerks,
+    right_jerks,
+    left_rom_min,
+    left_rom_max,
+    right_rom_min,
+    right_rom_max,
+    left_current_rom,
+    right_current_rom,
+    left_straightness_val,
+    right_straightness_val,
+    dominant_side
+):
+    duration_sec = frame_idx / fps if fps > 0 else 0.0
+    
+    # Calculate stats
+    left_avg_speed = np.mean(left_speeds) if left_speeds else 0.0
+    right_avg_speed = np.mean(right_speeds) if right_speeds else 0.0
+    left_max_speed = np.max(left_speeds) if left_speeds else 0.0
+    right_max_speed = np.max(right_speeds) if right_speeds else 0.0
+    left_avg_jerk = np.mean(left_jerks) if left_jerks else 0.0
+    right_avg_jerk = np.mean(right_jerks) if right_jerks else 0.0
+    
+    left_rom_range = left_rom_max - left_rom_min if left_rom_max != float('-inf') and left_rom_min != float('inf') else 0.0
+    right_rom_range = right_rom_max - right_rom_min if right_rom_max != float('-inf') and right_rom_min != float('inf') else 0.0
+    
+    # SVG circular gauge properties
+    if total_hits > 0:
+        stroke_color = "#34d399" # green
+        glow_color = "rgba(52, 211, 153, 0.3)"
+        offset = 0.0
+    else:
+        stroke_color = "#64748b" # gray
+        glow_color = "rgba(100, 116, 139, 0.15)"
+        offset = 301.59
+        
+    dominant_side_text = dominant_side.upper()
+    
+    return f"""<div style="background-color: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 20px; font-family: 'Inter', sans-serif; box-shadow: 0 4px 20px rgba(0,0,0,0.3); width: 100%; margin: 10px 0;">
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px;">
+<div>
+<h3 style="margin: 0; font-size: 14px; font-weight: 700; color: #E2E8F0; letter-spacing: 0.05em; text-transform: uppercase;">ARM KINEMATICS</h3>
+<p style="margin: 4px 0 0 0; font-size: 11px; color: #94A3B8; font-family: 'JetBrains Mono', monospace;">{frame_idx} frames · {duration_sec:.1f}s</p>
+</div>
+<div style="display: flex; gap: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-top: 4px;">
+<span style="color: #22D3EE; display: flex; align-items: center; gap: 4px;"><span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #22D3EE;"></span>LEFT</span>
+<span style="color: #FB7185; display: flex; align-items: center; gap: 4px;"><span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #FB7185;"></span>RIGHT</span>
+</div>
+</div>
+
+<!-- Hits Gauge -->
+<div style="display: flex; justify-content: center; margin-bottom: 8px;">
+<div style="position: relative; width: 120px; height: 120px; filter: drop-shadow(0 0 12px {glow_color});">
+<svg width="120" height="120" viewBox="0 0 120 120" style="transform: rotate(-90deg); width: 120px; height: 120px;">
+<!-- Track -->
+<circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="8" />
+<!-- Value -->
+<circle cx="60" cy="60" r="48" fill="none" stroke="{stroke_color}" stroke-width="8" stroke-linecap="round"
+stroke-dasharray="301.59" stroke-dashoffset="{offset}" style="transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease;" />
+</svg>
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+<span style="font-size: 26px; font-weight: 800; color: #FFFFFF; line-height: 1;">{total_hits}</span>
+<span style="font-size: 9px; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em; margin-top: 2px;">HITS</span>
+</div>
+</div>
+</div>
+<div style="text-align: center; font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 12px;">TARGET HITS</div>
+
+<!-- Dominant Side Badge -->
+<div style="display: flex; justify-content: center; margin-bottom: 15px;">
+<div style="border: 1px solid rgba(245, 158, 11, 0.4); background-color: rgba(245, 158, 11, 0.08); color: #FBBF24; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; padding: 4px 12px; border-radius: 20px; text-transform: uppercase;">
+DOMINANT: {dominant_side_text} ARM
+</div>
+</div>
+
+<!-- Metrics List -->
+<div style="display: flex; flex-direction: column;">
+<!-- Row: AVG SPEED -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+<span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG SPEED</span>
+<div style="display: flex; gap: 16px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_avg_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_avg_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+</div>
+</div>
+
+<!-- Row: MAX SPEED -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+<span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">MAX SPEED</span>
+<div style="display: flex; gap: 16px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_max_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_max_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+</div>
+</div>
+
+<!-- Row: AVG JERK -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+<span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG JERK</span>
+<div style="display: flex; gap: 16px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_avg_jerk:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_avg_jerk:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
+</div>
+</div>
+
+<!-- Row: ROM RANGE -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+<span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">ROM RANGE</span>
+<div style="display: flex; gap: 16px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_rom_range:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_rom_range:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+</div>
+</div>
+
+<!-- Row: CURRENT ROM -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+<span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">CURRENT ROM</span>
+<div style="display: flex; gap: 16px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_current_rom:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_current_rom:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+</div>
+</div>
+
+<!-- Row: STRAIGHTNESS -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+<span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">STRAIGHTNESS</span>
+<div style="display: flex; gap: 16px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_straightness_val:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">%</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_straightness_val:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">%</span></span>
+</div>
+</div>
+
+<!-- Row: DOMINANT SIDE -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: none;">
+<span style="font-size: 10px; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em;">DOMINANT SIDE</span>
+<span style="color: #FBBF24; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; text-transform: uppercase;">{dominant_side_text}</span>
+</div>
+</div>
+</div>"""
+
+
+
 # --- App Headers ---
-st.markdown("<h4 style='color: #94A3B8; margin-bottom: 0; font-family: Outfit, sans-serif; font-weight: 400;'>Kinematic Analysis & Learned Non-Use Assessment</h4>", unsafe_allow_html=True)
-st.markdown("<h1 style='margin-top: 0; color: #FFFFFF; font-family: Outfit, sans-serif; font-weight: 700;'>Dexterity & Sarcopenia Analyzer</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='color: #94A3B8; margin-bottom: 0; font-family: Outfit, sans-serif; font-weight: 400;'>By Toto and King</h4>", unsafe_allow_html=True)
+st.markdown("<h1 style='margin-top: 0; color: #FFFFFF; font-family: Outfit, sans-serif; font-weight: 700;'>KONKAE.COM</h1>", unsafe_allow_html=True)
 
 # --- Sidebar ---
-st.sidebar.markdown("""
-<div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
-    <span style="color: #38BDF8; font-weight: bold; font-size: 13px; display: block; margin-bottom: 8px;">🌐 ระบบประเมินร่วมทางคลินิก</span>
-    <a href="http://localhost:3000" target="_self" style="text-decoration: none;">
-        <button style="background: #06B6D4; color: #0F172A; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s; width: 100%;">
-            🎥 เปิดระบบกล้องสด (Live Webcam)
-        </button>
-    </a>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.markdown("""<div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
+<span style="color: #38BDF8; font-weight: bold; font-size: 13px; display: block; margin-bottom: 8px;">🌐 ระบบประเมินร่วมทางคลินิก</span>
+<a href="http://localhost:3000" target="_self" style="text-decoration: none;">
+<button style="background: #06B6D4; color: #0F172A; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s; width: 100%;">
+🎥 เปิดระบบกล้องสด (Live Webcam)
+</button>
+</a>
+</div>""", unsafe_allow_html=True)
 
 st.sidebar.title("Assessment Settings")
 
@@ -201,16 +370,11 @@ with col2:
         
     st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
     
-    # Grid collision metrics cards
-    st.markdown("<b>สถิติการชนเป้าหมาย (Hits count):</b>", unsafe_allow_html=True)
-    hit_cols = st.columns(2)
-    with hit_cols[0]:
-        st.markdown("<span class='badge-left'>ชนซ้าย (Left Hits)</span>", unsafe_allow_html=True)
-        left_hits_placeholder = st.empty()
-    with hit_cols[1]:
-        st.markdown("<span class='badge-right'>ชนขวา (Right Hits)</span>", unsafe_allow_html=True)
-        right_hits_placeholder = st.empty()
-        
+    st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
+    
+    # Kinematics Dashboard Card Placeholder
+    kinematics_card_placeholder = st.empty()
+    
     st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
 
     st.subheader("Real-Time Event Logs")
@@ -221,17 +385,6 @@ with col2:
     )
     log_placeholder = st.empty()
     log_download_placeholder = st.empty()
-    
-    st.subheader("Live Movement Telemetry")
-    tel_cols = st.columns(2)
-    with tel_cols[0]:
-        st.markdown("<span class='badge-left'>Left Arm</span>", unsafe_allow_html=True)
-        left_angle_metric = st.empty()
-        left_reps_metric = st.empty()
-    with tel_cols[1]:
-        st.markdown("<span class='badge-right'>Right Arm</span>", unsafe_allow_html=True)
-        right_angle_metric = st.empty()
-        right_reps_metric = st.empty()
 
 # Initialize log lists in session state for persistence across Streamlit reruns
 if "log_lines" not in st.session_state:
@@ -266,7 +419,7 @@ def filter_and_format_logs(lines, filter_type):
         filtered_lines.append(colored)
     return filtered_lines
 
-def render_logs(lines, filter_type, show_download=True):
+def render_logs(lines, filter_type, show_download=True, key=None):
     colored_lines = filter_and_format_logs(lines, filter_type)
     formatted = "<br>".join(colored_lines[::-1])  # Reverse logs (latest on top)
     log_placeholder.markdown(f"<div class='log-container'>{formatted}</div>", unsafe_allow_html=True)
@@ -274,31 +427,86 @@ def render_logs(lines, filter_type, show_download=True):
     if show_download:
         # Text-only format download of the full log lines
         log_text = "\n".join(lines)
+        button_key = key if key is not None else f"dl_btn_{len(lines)}"
         log_download_placeholder.download_button(
             label="📥 ดาวน์โหลด Event Logs (.txt)",
             data=log_text,
             file_name="dexterity_event_logs.txt",
             mime="text/plain",
-            key=f"dl_btn_{len(lines)}" # dynamic key to update button state
+            key=button_key
         )
     else:
         log_download_placeholder.empty()
 
 log_lines = st.session_state.log_lines
-render_logs(log_lines, log_filter)
+render_logs(log_lines, log_filter, key="dl_btn_top")
 rec_status_placeholder.markdown("<div class='status-badge-demo'>WAITING</div>", unsafe_allow_html=True)
 active_cell_placeholder.markdown("<div class='metric-card' style='padding:5px; margin:0;'>ไม่มี</div>", unsafe_allow_html=True)
 
-left_hits_placeholder.markdown("<div class='metric-card'><div class='metric-val'>0</div>Hits</div>", unsafe_allow_html=True)
-right_hits_placeholder.markdown("<div class='metric-card'><div class='metric-val'>0</div>Hits</div>", unsafe_allow_html=True)
-
-left_angle_metric.markdown("<div class='metric-card'><div class='metric-val'>0.0°</div>Elevation Angle</div>", unsafe_allow_html=True)
-left_reps_metric.markdown("<div class='metric-card'><div class='metric-val'>0</div>Reps Count</div>", unsafe_allow_html=True)
-right_angle_metric.markdown("<div class='metric-card'><div class='metric-val'>0.0°</div>Elevation Angle</div>", unsafe_allow_html=True)
-right_reps_metric.markdown("<div class='metric-card'><div class='metric-val'>0</div>Reps Count</div>", unsafe_allow_html=True)
+# Initialize live kinematics card
+initial_card_html = get_kinematics_card_html(
+    frame_idx=0,
+    fps=30.0,
+    total_hits=0,
+    left_speeds=[],
+    right_speeds=[],
+    left_jerks=[],
+    right_jerks=[],
+    left_rom_min=float('inf'),
+    left_rom_max=float('-inf'),
+    right_rom_min=float('inf'),
+    right_rom_max=float('-inf'),
+    left_current_rom=0.0,
+    right_current_rom=0.0,
+    left_straightness_val=0.0,
+    right_straightness_val=0.0,
+    dominant_side="WAITING"
+)
+kinematics_card_placeholder.markdown(initial_card_html, unsafe_allow_html=True)
 
 # Placeholder for final summary report
 report_placeholder = st.empty()
+
+# --- Telemetry Charts Section ---
+st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
+st.subheader("📊 กราฟวิเคราะห์การเคลื่อนไหว (Kinematics Telemetry Charts)")
+
+chart_col1, chart_col2, chart_col3 = st.columns(3)
+with chart_col1:
+    st.markdown("<b>ความเร็วของแขน (Arm Speed - px/s)</b>", unsafe_allow_html=True)
+    speed_chart_placeholder = st.empty()
+with chart_col2:
+    st.markdown("<b>ความราบเรียบของข้อต่อ (Movement Jerk)</b>", unsafe_allow_html=True)
+    jerk_chart_placeholder = st.empty()
+with chart_col3:
+    st.markdown("<b>องศาการขยับไหล่ (Shoulder ROM - degrees)</b>", unsafe_allow_html=True)
+    rom_chart_placeholder = st.empty()
+
+def update_telemetry_charts(history_list):
+    if not history_list:
+        return
+    import pandas as pd
+    df = pd.DataFrame(history_list)
+    if 'Timestamp (sec)' in df.columns:
+        df_speed = df[['Timestamp (sec)', 'Left Arm Speed (px/s)', 'Right Arm Speed (px/s)']].set_index('Timestamp (sec)')
+        df_jerk = df[['Timestamp (sec)', 'Left Movement Jerk (px/s3)', 'Right Movement Jerk (px/s3)']].set_index('Timestamp (sec)')
+        df_rom = df[['Timestamp (sec)', 'Left Shoulder Angle (deg)', 'Right Shoulder Angle (deg)']].set_index('Timestamp (sec)')
+        
+        df_speed.columns = ['Left Arm', 'Right Arm']
+        df_jerk.columns = ['Left Arm', 'Right Arm']
+        df_rom.columns = ['Left Arm', 'Right Arm']
+        
+        speed_chart_placeholder.line_chart(df_speed, height=200)
+        jerk_chart_placeholder.line_chart(df_jerk, height=200)
+        rom_chart_placeholder.line_chart(df_rom, height=200)
+
+# Initialize chart placeholders
+if st.session_state.get("analysis_completed", False) and st.session_state.get("frame_history"):
+    update_telemetry_charts(st.session_state.frame_history)
+else:
+    speed_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
+    jerk_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
+    rom_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
 
 
 # --- Processing Loop ---
@@ -328,7 +536,7 @@ if uploaded_file is not None:
             "Processing frames... (Pose & Target)"
         ]
         log_lines = st.session_state.log_lines
-        render_logs(log_lines, log_filter)
+        render_logs(log_lines, log_filter, show_download=False)
         
         # Setup VideoWriter if needed
         writer = None
@@ -364,6 +572,44 @@ if uploaded_file is not None:
         trial_start_times = {} # target_instance -> start_time
         left_wrist_history = []
         right_wrist_history = []
+        
+        # Temporal smoothers for joint coordinates
+        left_shoulder_smoother = TemporalSmoother(5)
+        right_shoulder_smoother = TemporalSmoother(5)
+        left_elbow_smoother = TemporalSmoother(5)
+        right_elbow_smoother = TemporalSmoother(5)
+        left_wrist_smoother = TemporalSmoother(5)
+        right_wrist_smoother = TemporalSmoother(5)
+        left_index_smoother = TemporalSmoother(5)
+        right_index_smoother = TemporalSmoother(5)
+
+        # Kinematic metrics tracking variables
+        prev_left_wrist_smooth = None
+        prev_right_wrist_smooth = None
+        prev_left_speed = 0.0
+        prev_right_speed = 0.0
+        prev_left_accel = 0.0
+        prev_right_accel = 0.0
+        
+        # Accumulators for physical speed and jerk
+        left_speeds = []
+        right_speeds = []
+        left_jerks = []
+        right_jerks = []
+        
+        # Range of motion bounds and current values
+        left_rom_min = float('inf')
+        left_rom_max = float('-inf')
+        right_rom_min = float('inf')
+        right_rom_max = float('-inf')
+        left_current_rom = 0.0
+        right_current_rom = 0.0
+        
+        # normalized wrist histories and path lengths for straightness calculation
+        left_wrist_norm_history = []
+        right_wrist_norm_history = []
+        left_path_length = 0.0
+        right_path_length = 0.0
         
         # Repetitions states
         left_arm_raised = False
@@ -537,6 +783,14 @@ if uploaded_file is not None:
                 cv2.rectangle(annotated_frame, (x_start + c * cell_w + 3, y_start + r * cell_h + 3), 
                               (x_start + (c + 1) * cell_w - 3, y_start + (r + 1) * cell_h - 3), glow_color, 3)
 
+            # Initialize frame kinematics variables
+            left_speed = 0.0
+            right_speed = 0.0
+            left_jerk = 0.0
+            right_jerk = 0.0
+            left_angle = 0.0
+            right_angle = 0.0
+
             # 3. AI Pose Tracking
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(rgb_frame)
@@ -559,16 +813,57 @@ if uploaded_file is not None:
                 r_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
                 r_index = landmarks[mp_pose.PoseLandmark.RIGHT_INDEX]
                 
+                # Convert to dictionaries for smoothing
+                l_shoulder_dict = {'x': l_shoulder.x, 'y': l_shoulder.y, 'z': l_shoulder.z}
+                r_shoulder_dict = {'x': r_shoulder.x, 'y': r_shoulder.y, 'z': r_shoulder.z}
+                l_elbow_dict = {'x': l_elbow.x, 'y': l_elbow.y, 'z': l_elbow.z}
+                r_elbow_dict = {'x': r_elbow.x, 'y': r_elbow.y, 'z': r_elbow.z}
+                l_wrist_dict = {'x': l_wrist.x, 'y': l_wrist.y, 'z': l_wrist.z}
+                r_wrist_dict = {'x': r_wrist.x, 'y': r_wrist.y, 'z': r_wrist.z}
+                l_index_dict = {'x': l_index.x, 'y': l_index.y, 'z': l_index.z}
+                r_index_dict = {'x': r_index.x, 'y': r_index.y, 'z': r_index.z}
+                
+                # Temporal smoothing
+                l_shoulder_smooth = left_shoulder_smoother.smooth(l_shoulder_dict)
+                r_shoulder_smooth = right_shoulder_smoother.smooth(r_shoulder_dict)
+                l_elbow_smooth = left_elbow_smoother.smooth(l_elbow_dict)
+                r_elbow_smooth = right_elbow_smoother.smooth(r_elbow_dict)
+                l_wrist_smooth = left_wrist_smoother.smooth(l_wrist_dict)
+                r_wrist_smooth = right_wrist_smoother.smooth(r_wrist_dict)
+                l_index_smooth = left_index_smoother.smooth(l_index_dict)
+                r_index_smooth = right_index_smoother.smooth(r_index_dict)
+                
+                # Calculate shoulder angles using smoothed coordinates
                 left_angle = calculate_shoulder_angle(
-                    (l_shoulder.x, l_shoulder.y), (l_elbow.x, l_elbow.y), (l_hip.x, l_hip.y)
+                    (l_shoulder_smooth['x'], l_shoulder_smooth['y']),
+                    (l_elbow_smooth['x'], l_elbow_smooth['y']),
+                    (l_hip.x, l_hip.y)
                 )
                 right_angle = calculate_shoulder_angle(
-                    (r_shoulder.x, r_shoulder.y), (r_elbow.x, r_elbow.y), (r_hip.x, r_hip.y)
+                    (r_shoulder_smooth['x'], r_shoulder_smooth['y']),
+                    (r_elbow_smooth['x'], r_elbow_smooth['y']),
+                    (r_hip.x, r_hip.y)
                 )
                 
                 if is_recording:
                     max_left_angle = max(max_left_angle, left_angle)
                     max_right_angle = max(max_right_angle, right_angle)
+                    
+                    left_rom_min = min(left_rom_min, left_angle)
+                    left_rom_max = max(left_rom_max, left_angle)
+                    right_rom_min = min(right_rom_min, right_angle)
+                    right_rom_max = max(right_rom_max, right_angle)
+                    
+                    left_current_rom = left_angle
+                    right_current_rom = right_angle
+                    
+                    left_wrist_norm_history.append(l_wrist_smooth)
+                    right_wrist_norm_history.append(r_wrist_smooth)
+                    
+                    if len(left_wrist_norm_history) >= 2:
+                        left_path_length += dist_3d_norm(left_wrist_norm_history[-1], left_wrist_norm_history[-2])
+                    if len(right_wrist_norm_history) >= 2:
+                        right_path_length += dist_3d_norm(right_wrist_norm_history[-1], right_wrist_norm_history[-2])
                     
                     # Left Arm Rep
                     if left_angle > 60.0:
@@ -588,14 +883,50 @@ if uploaded_file is not None:
                     elif right_angle < 30.0:
                         right_arm_raised = False
                 
-                l_wrist_px = (int(l_wrist.x * width), int(l_wrist.y * height))
-                r_wrist_px = (int(r_wrist.x * width), int(r_wrist.y * height))
+                # dist_3d_norm is defined globally
+                
+                dt_safe = 1.0 / fps if fps > 0 else 1.0 / 30.0
+                
+                # Instantaneous speed and jerk in normalized coordinates
+                if prev_left_wrist_smooth is not None:
+                    left_speed = dist_3d_norm(l_wrist_smooth, prev_left_wrist_smooth) / dt_safe
+                    left_accel = abs(left_speed - prev_left_speed) / dt_safe
+                    left_jerk = abs(left_accel - prev_left_accel) / dt_safe
+                    prev_left_accel = left_accel
+                else:
+                    left_accel = 0.0
+                    left_jerk = 0.0
+                    prev_left_accel = 0.0
+                    
+                if prev_right_wrist_smooth is not None:
+                    right_speed = dist_3d_norm(r_wrist_smooth, prev_right_wrist_smooth) / dt_safe
+                    right_accel = abs(right_speed - prev_right_speed) / dt_safe
+                    right_jerk = abs(right_accel - prev_right_accel) / dt_safe
+                    prev_right_accel = right_accel
+                else:
+                    right_accel = 0.0
+                    right_jerk = 0.0
+                    prev_right_accel = 0.0
+                    
+                prev_left_wrist_smooth = l_wrist_smooth
+                prev_right_wrist_smooth = r_wrist_smooth
+                prev_left_speed = left_speed
+                prev_right_speed = right_speed
+                
+                if is_recording:
+                    left_speeds.append(left_speed)
+                    right_speeds.append(right_speed)
+                    left_jerks.append(left_jerk)
+                    right_jerks.append(right_jerk)
+                
+                l_wrist_px = (int(l_wrist_smooth['x'] * width), int(l_wrist_smooth['y'] * height))
+                r_wrist_px = (int(r_wrist_smooth['x'] * width), int(r_wrist_smooth['y'] * height))
                 
                 if is_recording:
                     left_wrist_history.append(l_wrist_px)
                     right_wrist_history.append(r_wrist_px)
                     
-                    # Left Jitter
+                    # Left Jitter (retained for backward compatibility of custom smoothness)
                     if len(left_wrist_history) >= 3:
                         v1 = np.array(left_wrist_history[-1]) - np.array(left_wrist_history[-2])
                         v2 = np.array(left_wrist_history[-2]) - np.array(left_wrist_history[-3])
@@ -608,19 +939,15 @@ if uploaded_file is not None:
                         right_jitter_sum += np.linalg.norm(v1 - v2)
                         right_jitter_frames += 1
                 
-                # Set tracking coordinate points
+                # Set tracking coordinate points (using smoothed positions)
                 if ref_point_mode == "Index Finger Tip":
-                    left_wrist_pt = (int(l_index.x * width), int(l_index.y * height))
-                    right_wrist_pt = (int(r_index.x * width), int(r_index.y * height))
+                    left_wrist_pt = (int(l_index_smooth['x'] * width), int(l_index_smooth['y'] * height))
+                    right_wrist_pt = (int(r_index_smooth['x'] * width), int(r_index_smooth['y'] * height))
                 else:
                     left_wrist_pt = l_wrist_px
                     right_wrist_pt = r_wrist_px
                 
-                # Update telemetry metrics in sidebar col
-                left_angle_metric.markdown(f"<div class='metric-card'><div class='metric-val'>{left_angle:.1f}°</div>Elevation Angle</div>", unsafe_allow_html=True)
-                left_reps_metric.markdown(f"<div class='metric-card'><div class='metric-val'>{left_raise_count}</div>Reps Count</div>", unsafe_allow_html=True)
-                right_angle_metric.markdown(f"<div class='metric-card'><div class='metric-val'>{right_angle:.1f}°</div>Elevation Angle</div>", unsafe_allow_html=True)
-                right_reps_metric.markdown(f"<div class='metric-card'><div class='metric-val'>{right_raise_count}</div>Reps Count</div>", unsafe_allow_html=True)
+                # Pose telemetry updated globally at the end of loop iteration
 
                 # Draw skeleton overlays
                 mp_drawing.draw_landmarks(
@@ -699,9 +1026,42 @@ if uploaded_file is not None:
             progress_bar.progress(pct_complete)
             status_placeholder.text(f"Processed Frame: {frame_idx}/{total_frames} ({pct_complete * 100:.1f}%)")
             
-            # Update telemetry targets hits counters
-            left_hits_placeholder.markdown(f"<div class='metric-card'><div class='metric-val'>{left_hits_count}</div>Hits</div>", unsafe_allow_html=True)
-            right_hits_placeholder.markdown(f"<div class='metric-card'><div class='metric-val'>{right_hits_count}</div>Hits</div>", unsafe_allow_html=True)
+            # Update live kinematics card
+            left_speed_sum = sum(left_speeds) if left_speeds else 0.0
+            right_speed_sum = sum(right_speeds) if right_speeds else 0.0
+            if left_speed_sum == 0.0 and right_speed_sum == 0.0:
+                dominant_side = "WAITING"
+            else:
+                dominant_side = "left" if left_speed_sum > right_speed_sum else "right"
+
+            left_straightness_val = 0.0
+            right_straightness_val = 0.0
+            if left_wrist_norm_history:
+                left_disp = dist_3d_norm(left_wrist_norm_history[-1], left_wrist_norm_history[0])
+                left_straightness_val = (left_disp / left_path_length * 100) if left_path_length > 0.001 else 0.0
+            if right_wrist_norm_history:
+                right_disp = dist_3d_norm(right_wrist_norm_history[-1], right_wrist_norm_history[0])
+                right_straightness_val = (right_disp / right_path_length * 100) if right_path_length > 0.001 else 0.0
+
+            live_card_html = get_kinematics_card_html(
+                frame_idx=frame_idx,
+                fps=fps,
+                total_hits=total_hits,
+                left_speeds=left_speeds,
+                right_speeds=right_speeds,
+                left_jerks=left_jerks,
+                right_jerks=right_jerks,
+                left_rom_min=left_rom_min,
+                left_rom_max=left_rom_max,
+                right_rom_min=right_rom_min,
+                right_rom_max=right_rom_max,
+                left_current_rom=left_current_rom,
+                right_current_rom=right_current_rom,
+                left_straightness_val=left_straightness_val,
+                right_straightness_val=right_straightness_val,
+                dominant_side=dominant_side
+            )
+            kinematics_card_placeholder.markdown(live_card_html, unsafe_allow_html=True)
             
             render_logs(log_lines, log_filter, show_download=False)
             
@@ -748,25 +1108,79 @@ if uploaded_file is not None:
                 'Right Hand X (%)': right_hand_x if right_hand_x is not None else "N/A",
                 'Right Hand Y (%)': right_hand_y if right_hand_y is not None else "N/A",
                 'Left Hand Hit': "Yes" if left_hit_this_frame else "No",
-                'Right Hand Hit': "Yes" if right_hit_this_frame else "No"
+                'Right Hand Hit': "Yes" if right_hit_this_frame else "No",
+                'Left Arm Speed (px/s)': round(left_speed, 1) if (results.pose_landmarks and prev_left_wrist_smooth is not None) else 0.0,
+                'Right Arm Speed (px/s)': round(right_speed, 1) if (results.pose_landmarks and prev_right_wrist_smooth is not None) else 0.0,
+                'Left Movement Jerk (px/s3)': round(left_jerk, 1) if (results.pose_landmarks and prev_left_wrist_smooth is not None) else 0.0,
+                'Right Movement Jerk (px/s3)': round(right_jerk, 1) if (results.pose_landmarks and prev_right_wrist_smooth is not None) else 0.0,
+                'Left Shoulder Angle (deg)': round(left_angle, 1) if results.pose_landmarks else 0.0,
+                'Right Shoulder Angle (deg)': round(right_angle, 1) if results.pose_landmarks else 0.0
             })
+            
+            if frame_idx % 30 == 0:
+                update_telemetry_charts(local_frame_history)
                 
         # --- End of Processing pipeline ---
         cap.release()
         if writer:
             writer.release()
         st.session_state.frame_history = local_frame_history
+        
+        # Final charts update
+        update_telemetry_charts(local_frame_history)
             
         log_lines.append("Assessment completed successfully!")
-        render_logs(log_lines, log_filter)
+        render_logs(log_lines, log_filter, key="dl_btn_finished")
         
-        # Calculate kinematics summaries
-        left_avg_speed = np.mean(left_reaction_times) if left_reaction_times else 0.0
-        right_avg_speed = np.mean(right_reaction_times) if right_reaction_times else 0.0
+        # Calculate kinematics summaries (Reaction Time and physical movement speed/jerk)
+        left_avg_reaction_time = np.mean(left_reaction_times) if left_reaction_times else 0.0
+        right_avg_reaction_time = np.mean(right_reaction_times) if right_reaction_times else 0.0
         
         left_smoothness = max(0, min(100, 100 - (left_jitter_sum / max(1, left_jitter_frames) * 1200)))
         right_smoothness = max(0, min(100, 100 - (right_jitter_sum / max(1, right_jitter_frames) * 1200)))
         
+        # Calculate straightness
+        def get_displacement_and_path_length(history):
+            if len(history) < 2:
+                return 0.0, 0.0
+            def dist_3d_dict(a, b):
+                return np.sqrt((a['x'] - b['x'])**2 + (a['y'] - b['y'])**2 + (a['z'] - b['z'])**2)
+            start = history[0]
+            end = history[-1]
+            displacement = dist_3d_dict(start, end)
+            path_length = 0.0
+            for i in range(1, len(history)):
+                path_length += dist_3d_dict(history[i], history[i-1])
+            return displacement, path_length
+
+        left_disp, left_path = get_displacement_and_path_length(left_wrist_norm_history)
+        left_straightness_val = (left_disp / left_path if left_path > 0.001 else 1.0) * 100
+        
+        right_disp, right_path = get_displacement_and_path_length(right_wrist_norm_history)
+        right_straightness_val = (right_disp / right_path if right_path > 0.001 else 1.0) * 100
+
+        dominant_side_en = "LEFT" if left_speed_sum > right_speed_sum else "RIGHT"
+
+        # New kinematics metrics summaries
+        left_avg_speed_px = np.mean(left_speeds) if left_speeds else 0.0
+        right_avg_speed_px = np.mean(right_speeds) if right_speeds else 0.0
+        left_max_speed_px = np.max(left_speeds) if left_speeds else 0.0
+        right_max_speed_px = np.max(right_speeds) if right_speeds else 0.0
+        
+        left_avg_jerk_px = np.mean(left_jerks) if left_jerks else 0.0
+        right_avg_jerk_px = np.mean(right_jerks) if right_jerks else 0.0
+        
+        left_rom_range = left_rom_max - left_rom_min if left_rom_max != float('-inf') else 0.0
+        right_rom_range = right_rom_max - right_rom_min if right_rom_max != float('-inf') else 0.0
+        
+        left_speed_sum = sum(left_speeds) if left_speeds else 0.0
+        right_speed_sum = sum(right_speeds) if right_speeds else 0.0
+        
+        if left_speed_sum == 0.0 and right_speed_sum == 0.0:
+            dominant_side_thai = "ไม่ระบุ (ไม่มีข้อมูลเคลื่อนไหว)"
+        else:
+            dominant_side_thai = "มือซ้าย (LEFT)" if left_speed_sum > right_speed_sum else "มือขวา (RIGHT)"
+            
         # Learned Non-Use Risk Assessment
         lnu_risk = "Low (ความเสี่ยงต่ำ)"
         lnu_color = "#1FD1C8"
@@ -785,43 +1199,110 @@ if uploaded_file is not None:
                 lnu_risk = "Moderate (ความเสี่ยงปานกลาง - มีแนวโน้มชดเชยการใช้กำลังสองฝั่งไม่สมดุล)"
                 lnu_color = "#F59E0B"
                 
-        # Display Final Assessment Report
-        report_html = f"""
-        <div class='report-card'>
-            <h3 style='margin-top:0; color:#FFFFFF; border-bottom:1px solid #334155; padding-bottom:8px;'>
-               🩺 รายงานผลการประเมินความถนัดและการเคลื่อนไหว (Dexterity Report)
-            </h3>
-            
-            <div style='display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:15px;'>
-                <div>
-                    <h5 style='color:#38BDF8; margin-bottom:5px;'><span class='badge-left'>มือซ้าย (Left Hand)</span></h5>
-                    <p style='margin:4px 0;'><b>ความแม่นยำ:</b> {left_hits_count} Hits</p>
-                    <p style='margin:4px 0;'><b>ความเร็วเฉลี่ย (Reaction Time):</b> {left_avg_speed:.2f} วินาที</p>
-                    <p style='margin:4px 0;'><b>องศาสะบักไหล่สูงสุด (Shoulder Angle):</b> {max_left_angle:.1f}°</p>
-                    <p style='margin:4px 0;'><b>ความลื่นไหลของข้อต่อ (Smoothness):</b> {left_smoothness:.1f}%</p>
-                    <p style='margin:4px 0;'><b>จำนวนครั้งยกแขน (Reps):</b> {left_raise_count} ครั้ง</p>
-                </div>
-                <div>
-                    <h5 style='color:#FB923C; margin-bottom:5px;'><span class='badge-right'>มือขวา (Right Hand)</span></h5>
-                    <p style='margin:4px 0;'><b>ความแม่นยำ:</b> {right_hits_count} Hits</p>
-                    <p style='margin:4px 0;'><b>ความเร็วเฉลี่ย (Reaction Time):</b> {right_avg_speed:.2f} วินาที</p>
-                    <p style='margin:4px 0;'><b>องศาสะบักไหล่สูงสุด (Shoulder Angle):</b> {max_right_angle:.1f}°</p>
-                    <p style='margin:4px 0;'><b>ความลื่นไหลของข้อต่อ (Smoothness):</b> {right_smoothness:.1f}%</p>
-                    <p style='margin:4px 0;'><b>จำนวนครั้งยกแขน (Reps):</b> {right_raise_count} ครั้ง</p>
-                </div>
-            </div>
-            
-            <div style='margin-top:20px; padding:16px; background-color:#0F172A; border-radius:12px; border:1px solid #334155;'>
-                <p style='margin:0; font-size:14px;'>
-                   🔍 <b>สรุปการคาดการณ์ภาวะ Learned Non-Use:</b> 
-                   <span style='color:{lnu_color}; font-weight:bold;'>{lnu_risk}</span>
-                </p>
-                <p style='margin:5px 0 0 0; font-size:11px; color:#94A3B8;'>
-                   * เกณฑ์คำนวณจากความสมดุลของการสลับยื่นมือ, ความเร็วสัมผัส, องศาไหล่ (Shoulder Elevation), และระดับความแกว่งไหว (Jitter) ระหว่างการประเมิน
-                </p>
-            </div>
-        </div>
-        """
+        # Display Final Assessment Report matching the real-time panel style
+        report_html = f"""<div style="background-color: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 24px; font-family: 'Inter', sans-serif; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-width: 600px; margin: 20px auto;">
+<!-- Header -->
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 12px;">
+<div>
+<h3 style="margin: 0; font-size: 15px; font-weight: 700; color: #E2E8F0; letter-spacing: 0.05em; text-transform: uppercase;">ARM KINEMATICS</h3>
+<p style="margin: 4px 0 0 0; font-size: 11px; color: #94A3B8; font-family: 'JetBrains Mono', monospace;">{frame_idx} frames · {frame_idx / fps:.1f}s</p>
+</div>
+<div style="display: flex; gap: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-top: 4px;">
+<span style="color: #22D3EE; display: flex; align-items: center; gap: 4px;"><span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #22D3EE;"></span>LEFT</span>
+<span style="color: #FB7185; display: flex; align-items: center; gap: 4px;"><span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #FB7185;"></span>RIGHT</span>
+</div>
+</div>
+
+<!-- Hero Hit Ring -->
+<div style="display: flex; justify-content: center; margin-bottom: 12px;">
+<div style="width: 100px; height: 100px; border-radius: 50%; border: 4px solid #334155; display: flex; flex-direction: column; justify-content: center; align-items: center; background: radial-gradient(circle, rgba(15,23,42,1) 60%, rgba(30,41,59,1) 100%); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+<span style="font-size: 32px; font-weight: 800; color: #FFFFFF; line-height: 1;">{total_hits}</span>
+<span style="font-size: 9px; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em; margin-top: 4px;">HITS</span>
+</div>
+</div>
+<div style="text-align: center; font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 15px;">TARGET HITS</div>
+
+<!-- Dominant Side Badge -->
+<div style="display: flex; justify-content: center; margin-bottom: 24px;">
+<div style="border: 1px solid rgba(245, 158, 11, 0.4); background-color: rgba(245, 158, 11, 0.08); color: #FBBF24; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; padding: 6px 16px; border-radius: 20px; text-transform: uppercase;">
+DOMINANT: {dominant_side_en} ARM
+</div>
+</div>
+
+<!-- Metrics List -->
+<div style="display: flex; flex-direction: column;">
+<!-- Row: AVG SPEED -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG SPEED</span>
+<div style="display: flex; gap: 24px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_avg_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_avg_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+</div>
+</div>
+
+<!-- Row: MAX SPEED -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">MAX SPEED</span>
+<div style="display: flex; gap: 24px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_max_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_max_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+</div>
+</div>
+
+<!-- Row: AVG JERK -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG JERK</span>
+<div style="display: flex; gap: 24px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_avg_jerk_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_avg_jerk_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
+</div>
+</div>
+
+<!-- Row: ROM RANGE -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">ROM RANGE</span>
+<div style="display: flex; gap: 24px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_rom_range:.0f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_rom_range:.0f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+</div>
+</div>
+
+<!-- Row: CURRENT ROM -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">CURRENT ROM</span>
+<div style="display: flex; gap: 24px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_current_rom:.0f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_current_rom:.0f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">°</span></span>
+</div>
+</div>
+
+<!-- Row: STRAIGHTNESS -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">STRAIGHTNESS</span>
+<div style="display: flex; gap: 24px;">
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_straightness_val:.0f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">%</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_straightness_val:.0f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">%</span></span>
+</div>
+</div>
+
+<!-- Row: DOMINANT SIDE -->
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #334155;">
+<span style="font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.05em;">DOMINANT SIDE</span>
+<span style="color: #FBBF24; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; text-transform: uppercase;">{dominant_side_en}</span>
+</div>
+</div>
+
+<!-- Learned Non-Use Summary Box -->
+<div style="margin-top: 20px; padding: 16px; background-color: #0F172A; border-radius: 12px; border: 1px solid #334155;">
+<p style="margin: 0; font-size: 14px; color: #FFFFFF;">
+🔍 <b>สรุปการคาดการณ์ภาวะ Learned Non-Use:</b> 
+<span style="color: {lnu_color}; font-weight: bold;">{lnu_risk}</span>
+</p>
+<p style="margin: 5px 0 0 0; font-size: 11px; color: #94A3B8;">
+* เกณฑ์คำนวณจากความสมดุลของการสลับยื่นมือ, ความเร็วสัมผัส, องศาไหล่ (Shoulder Elevation), และระดับความแกว่งไหว (Jitter) ระหว่างการประเมิน
+</p>
+</div>
+</div>"""
         report_placeholder.markdown(report_html, unsafe_allow_html=True)
         st.balloons()
         
