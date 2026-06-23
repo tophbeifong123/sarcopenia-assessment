@@ -255,20 +255,23 @@ def filter_and_format_logs(lines, filter_type):
         filtered_lines.append(colored)
     return filtered_lines
 
-def render_logs(lines, filter_type):
+def render_logs(lines, filter_type, show_download=True):
     colored_lines = filter_and_format_logs(lines, filter_type)
     formatted = "<br>".join(colored_lines[::-1])  # Reverse logs (latest on top)
     log_placeholder.markdown(f"<div class='log-container'>{formatted}</div>", unsafe_allow_html=True)
     
-    # Text-only format download of the full log lines
-    log_text = "\n".join(lines)
-    log_download_placeholder.download_button(
-        label="📥 ดาวน์โหลด Event Logs (.txt)",
-        data=log_text,
-        file_name="dexterity_event_logs.txt",
-        mime="text/plain",
-        key=f"dl_btn_{len(lines)}" # dynamic key to update button state
-    )
+    if show_download:
+        # Text-only format download of the full log lines
+        log_text = "\n".join(lines)
+        log_download_placeholder.download_button(
+            label="📥 ดาวน์โหลด Event Logs (.txt)",
+            data=log_text,
+            file_name="dexterity_event_logs.txt",
+            mime="text/plain",
+            key=f"dl_btn_{len(lines)}" # dynamic key to update button state
+        )
+    else:
+        log_download_placeholder.empty()
 
 log_lines = st.session_state.log_lines
 render_logs(log_lines, log_filter)
@@ -689,7 +692,7 @@ if uploaded_file is not None:
             left_hits_placeholder.markdown(f"<div class='metric-card'><div class='metric-val'>{left_hits_count}</div>Hits</div>", unsafe_allow_html=True)
             right_hits_placeholder.markdown(f"<div class='metric-card'><div class='metric-val'>{right_hits_count}</div>Hits</div>", unsafe_allow_html=True)
             
-            render_logs(log_lines, log_filter)
+            render_logs(log_lines, log_filter, show_download=False)
             
             if writer:
                 writer.write(annotated_frame)
