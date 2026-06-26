@@ -74,10 +74,11 @@ def get_preview_frame(video_path, skip_seconds, left_margin, right_margin, top_m
     # Convert BGR to RGB
     return cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
 
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="KONKAE.COM",
-    page_icon="\U0001F9BE",
+    page_icon="🦾",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -95,7 +96,6 @@ _DEFAULTS = {
     "report_html": None,
     "frame_history": [],
     "video_bytes": None,
-    # Persisted UI snapshots (survive reruns so video/telemetry don't vanish)
     "last_frame_rgb": None,
     "last_kinematics_html": None,
     "last_progress": 0.0,
@@ -115,10 +115,10 @@ st.markdown("<h1 style='margin-top: 0; color: #FFFFFF; font-family: Outfit, sans
 
 # --- Sidebar ---
 st.sidebar.markdown("""<div style="background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
-<span style="color: #38BDF8; font-weight: bold; font-size: 13px; display: block; margin-bottom: 8px;">\U0001F310 \u0e23\u0e30\u0e1a\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e21\u0e34\u0e19\u0e23\u0e48\u0e27\u0e21\u0e17\u0e32\u0e07\u0e04\u0e25\u0e34\u0e19\u0e34\u0e01</span>
+<span style="color: #38BDF8; font-weight: bold; font-size: 13px; display: block; margin-bottom: 8px;">🌐 ระบบประเมินร่วมทางคลินิก</span>
 <a href="http://localhost:3000" target="_self" style="text-decoration: none;">
 <button style="background: #06B6D4; color: #0F172A; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s; width: 100%;">
-\U0001F3A5 \u0e40\u0e1b\u0e34\u0e14\u0e23\u0e30\u0e1a\u0e1a\u0e01\u0e25\u0e49\u0e2d\u0e07\u0e2a\u0e14 (Live Webcam)
+🎥 เปิดระบบกล้องสด (Live Webcam)
 </button>
 </a>
 </div>""", unsafe_allow_html=True)
@@ -126,15 +126,15 @@ st.sidebar.markdown("""<div style="background: rgba(6, 182, 212, 0.1); border: 1
 st.sidebar.title("Assessment Settings")
 
 min_frames_in_box = st.sidebar.slider("Min Frames for HIT (Sensitivity)", 2, 20, 3, step=1)
-skip_seconds = st.sidebar.slider("\u0e02\u0e49\u0e32\u0e21\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e23\u0e34\u0e48\u0e21\u0e15\u0e49\u0e19\u0e27\u0e34\u0e14\u0e35\u0e42\u0e2d/\u0e2a\u0e2d\u0e19\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19 (\u0e27\u0e34\u0e19\u0e32\u0e17\u0e35)", 0.0, 30.0, 0.0, step=0.5)
-target_color = st.sidebar.selectbox("\u0e2a\u0e35\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22 (Target Color)", ["Green", "Red", "Blue"])
-ref_point_mode = st.sidebar.selectbox("\u0e08\u0e38\u0e14\u0e2d\u0e49\u0e32\u0e07\u0e2d\u0e34\u0e07\u0e02\u0e2d\u0e07\u0e21\u0e37\u0e2d (Tracking Point)", ["Wrist", "Index Finger Tip"])
+skip_seconds = st.sidebar.slider("ข้ามช่วงเริ่มต้นวิดีโอ/สอนใช้งาน (วินาที)", 0.0, 30.0, 0.0, step=0.5)
+target_color = st.sidebar.selectbox("สีกล่องเป้าหมาย (Target Color)", ["Green", "Red", "Blue"])
+ref_point_mode = st.sidebar.selectbox("จุดอ้างอิงของมือ (Tracking Point)", ["Wrist", "Index Finger Tip"])
 
-mirror_view = st.sidebar.checkbox("\u0e01\u0e25\u0e31\u0e1a\u0e14\u0e49\u0e32\u0e19\u0e27\u0e34\u0e14\u0e35\u0e42\u0e2d (Mirror/Flip Video)", value=False)
+mirror_view = st.sidebar.checkbox("กลับด้านวิดีโอ (Mirror/Flip Video)", value=False)
 save_video = st.sidebar.checkbox("Save Annotated Video for Download", value=True)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("\U0001F4D0 Grid Bounds Alignment")
+st.sidebar.subheader("📐 Grid Bounds Alignment")
 grid_preset = st.sidebar.selectbox("Grid Layout Preset", ["Fit Video Frame (Default)", "Center 4:3 (Pillarbox)", "Custom Margins"])
 
 if grid_preset == "Center 4:3 (Pillarbox)":
@@ -205,13 +205,13 @@ if not st.session_state.processing and uploaded_file is not None and "temp_video
 def _filter_and_format_logs(lines, filter_type):
     filtered_lines = []
     for line in lines:
-        if filter_type == "\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22\u0e1b\u0e23\u0e32\u0e01\u0e0f (Appearances)" and "appeared" not in line:
+        if filter_type == "เฉพาะเป้าหมายปรากฏ (Appearances)" and "appeared" not in line:
             continue
-        elif filter_type == "\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e01\u0e32\u0e23\u0e0a\u0e19\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22 (Hits)" and "HIT" not in line:
+        elif filter_type == "เฉพาะการชนเป้าหมาย (Hits)" and "HIT" not in line:
             continue
-        elif filter_type == "\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22\u0e1e\u0e25\u0e32\u0e14 (Misses)" and "disappeared" not in line:
+        elif filter_type == "เฉพาะเป้าหมายพลาด (Misses)" and "disappeared" not in line:
             continue
-        elif filter_type == "\u0e40\u0e09\u0e1e\u0e32\u0e30\u0e01\u0e32\u0e23\u0e22\u0e01\u0e41\u0e02\u0e19 (Arm Raises)" and "Raise" not in line:
+        elif filter_type == "เฉพาะการยกแขน (Arm Raises)" and "Raise" not in line:
             continue
 
         if "appeared" in line:
@@ -242,10 +242,10 @@ with col2:
     st.subheader("Real-Time Telemetry & Status")
     status_col1, status_col2 = st.columns(2)
     with status_col1:
-        st.markdown("<b>\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01:</b>", unsafe_allow_html=True)
+        st.markdown("<b>สถานะการบันทึก:</b>", unsafe_allow_html=True)
         rec_status_placeholder = st.empty()
     with status_col2:
-        st.markdown("<b>\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22\u0e02\u0e13\u0e30\u0e19\u0e35\u0e49:</b>", unsafe_allow_html=True)
+        st.markdown("<b>เป้าหมายขณะนี้:</b>", unsafe_allow_html=True)
         active_cell_placeholder = st.empty()
 
     st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
@@ -289,11 +289,7 @@ with col2:
     _log_panel()
 
 
-
 # --- Restore persisted UI state from session_state ---
-# This is the key fix: after a rerun the placeholders are recreated empty,
-# so we immediately re-populate them from whatever we last stored.
-
 if st.session_state.last_frame_rgb is not None:
     frame_placeholder.image(st.session_state.last_frame_rgb, use_container_width=True)
 
@@ -308,7 +304,7 @@ else:
 if st.session_state.last_active_cell_html:
     active_cell_placeholder.markdown(st.session_state.last_active_cell_html, unsafe_allow_html=True)
 else:
-    active_cell_placeholder.markdown("<div class='metric-card' style='padding:5px; margin:0;'>\u0e44\u0e21\u0e48\u0e21\u0e35</div>", unsafe_allow_html=True)
+    active_cell_placeholder.markdown("<div class='metric-card' style='padding:5px; margin:0;'>ไม่มี</div>", unsafe_allow_html=True)
 
 if st.session_state.last_kinematics_html:
     kinematics_card_placeholder.markdown(st.session_state.last_kinematics_html, unsafe_allow_html=True)
@@ -331,17 +327,17 @@ report_placeholder = st.empty()
 
 # --- Telemetry Charts Section ---
 st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
-st.subheader("\U0001F4CA \u0e01\u0e23\u0e32\u0e1f\u0e27\u0e34\u0e40\u0e04\u0e23\u0e32\u0e30\u0e2b\u0e4c\u0e01\u0e32\u0e23\u0e40\u0e04\u0e25\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e2b\u0e27 (Kinematics Telemetry Charts)")
+st.subheader("📊 กราฟวิเคราะห์การเคลื่อนไหว (Kinematics Telemetry Charts)")
 
 chart_col1, chart_col2, chart_col3 = st.columns(3)
 with chart_col1:
-    st.markdown("<b>\u0e04\u0e27\u0e32\u0e21\u0e40\u0e23\u0e47\u0e27\u0e02\u0e2d\u0e07\u0e41\u0e02\u0e19 (Arm Speed - px/s)</b>", unsafe_allow_html=True)
+    st.markdown("<b>ความเร็วของแขน (Arm Speed - px/s)</b>", unsafe_allow_html=True)
     speed_chart_placeholder = st.empty()
 with chart_col2:
-    st.markdown("<b>\u0e04\u0e27\u0e32\u0e21\u0e23\u0e32\u0e1a\u0e40\u0e23\u0e35\u0e22\u0e1a\u0e02\u0e2d\u0e07\u0e02\u0e49\u0e2d\u0e15\u0e48\u0e2d (Movement Jerk)</b>", unsafe_allow_html=True)
+    st.markdown("<b>ความเรียบเนียนของข้อต่อ (Movement Jerk)</b>", unsafe_allow_html=True)
     jerk_chart_placeholder = st.empty()
 with chart_col3:
-    st.markdown("<b>\u0e2d\u0e07\u0e28\u0e32\u0e01\u0e32\u0e23\u0e02\u0e22\u0e31\u0e1a\u0e44\u0e2b\u0e25\u0e48 (Shoulder ROM - degrees)</b>", unsafe_allow_html=True)
+    st.markdown("<b>องศาการขยับไหล่ (Shoulder ROM - degrees)</b>", unsafe_allow_html=True)
     rom_chart_placeholder = st.empty()
 
 
@@ -366,9 +362,9 @@ def update_telemetry_charts(history_list):
 if st.session_state.analysis_completed and st.session_state.frame_history:
     update_telemetry_charts(st.session_state.frame_history)
 else:
-    speed_chart_placeholder.info("\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e01\u0e32\u0e23\u0e40\u0e04\u0e25\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e2b\u0e27...")
-    jerk_chart_placeholder.info("\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e01\u0e32\u0e23\u0e40\u0e04\u0e25\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e2b\u0e27...")
-    rom_chart_placeholder.info("\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e01\u0e32\u0e23\u0e40\u0e04\u0e25\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e2b\u0e27...")
+    speed_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
+    jerk_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
+    rom_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
 
 
 # --- Processing Loop ---
@@ -419,7 +415,7 @@ if uploaded_file is not None:
         ]
 
         # Optional annotated-video writer
-        import cv2  # local import keeps the writer concern next to its use
+        import cv2
 
         writer = None
         out_path = None
@@ -446,18 +442,18 @@ if uploaded_file is not None:
 
                 # Active-cell telemetry
                 if result.active_cells:
-                    cells_str = ", ".join([f"\u0e0a\u0e48\u0e2d\u0e07\u0e17\u0e35\u0e48 {c}" for c in result.active_cells])
+                    cells_str = ", ".join([f"ช่องที่ {c}" for c in result.active_cells])
                     cell_html = f"<div class='metric-card' style='padding:5px; margin:0; border-color:#EF4444; color:#EF4444;'>{cells_str}</div>"
                 else:
-                    cell_html = "<div class='metric-card' style='padding:5px; margin:0;'>\u0e44\u0e21\u0e48\u0e21\u0e35</div>"
+                    cell_html = "<div class='metric-card' style='padding:5px; margin:0;'>ไม่มี</div>"
                 active_cell_placeholder.markdown(cell_html, unsafe_allow_html=True)
                 st.session_state.last_active_cell_html = cell_html
 
                 # Recording status telemetry
                 if result.is_recording:
-                    rec_html = "<div class='status-badge-recording'>REC ACTIVE (\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25)</div>"
+                    rec_html = "<div class='status-badge-recording'>REC ACTIVE (บันทึกข้อมูล)</div>"
                 else:
-                    rec_html = "<div class='status-badge-demo'>DEMO MODE (\u0e0a\u0e48\u0e27\u0e07\u0e2a\u0e2d\u0e19/\u0e2a\u0e32\u0e18\u0e34\u0e15)</div>"
+                    rec_html = "<div class='status-badge-demo'>DEMO MODE (ช่วงสอน/สาธิต)</div>"
                 rec_status_placeholder.markdown(rec_html, unsafe_allow_html=True)
                 st.session_state.last_rec_status_html = rec_html
 
@@ -551,7 +547,7 @@ if uploaded_file is not None:
                 video_bytes = f.read()
             st.session_state.video_bytes = video_bytes
             st.sidebar.download_button(
-                label="\U0001F4E5 Download Annotated Video",
+                label="📥 Download Annotated Video",
                 data=video_bytes,
                 file_name="annotated_dexterity_assessment.mp4",
                 mime="video/mp4",
@@ -567,9 +563,6 @@ if uploaded_file is not None:
                 os.unlink(out_path)
         except OSError:
             pass
-else:
-    # No file uploaded — ensure Start Analysis button is not shown
-    pass
 
 
 # --- Final results + Frame Inspector ---
@@ -579,7 +572,7 @@ if st.session_state.analysis_completed:
 
     if st.session_state.video_bytes:
         st.sidebar.download_button(
-            label="\U0001F4E5 Download Annotated Video",
+            label="📥 Download Annotated Video",
             data=st.session_state.video_bytes,
             file_name="annotated_dexterity_assessment.mp4",
             mime="video/mp4",
@@ -588,7 +581,7 @@ if st.session_state.analysis_completed:
         )
 
     st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
-    st.subheader("\U0001F50D \u0e04\u0e49\u0e19\u0e2b\u0e32\u0e41\u0e25\u0e30\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e23\u0e32\u0e22\u0e40\u0e1f\u0e23\u0e21 (Frame Inspector)")
+    st.subheader("🔍 ค้นหาและตรวจสอบรายเฟรม (Frame Inspector)")
 
     df_history = pd.DataFrame(st.session_state.frame_history)
 
@@ -596,7 +589,7 @@ if st.session_state.analysis_completed:
     with col_dl:
         csv_data = df_history.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            label="\U0001F4E5 \u0e14\u0e32\u0e27\u0e19\u0e4c\u0e42\u0e2b\u0e25\u0e14\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e38\u0e01\u0e40\u0e1f\u0e23\u0e21 (CSV)",
+            label="📥 ดาวน์โหลดข้อมูลทุกเฟรม (CSV)",
             data=csv_data,
             file_name="detailed_frame_log.csv",
             mime="text/csv",
@@ -604,25 +597,25 @@ if st.session_state.analysis_completed:
         )
 
     with col_search:
-        search_frame = st.number_input("\u0e1b\u0e49\u0e2d\u0e19\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e25\u0e02\u0e40\u0e1f\u0e23\u0e21\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e04\u0e49\u0e19\u0e2b\u0e32 (\u0e40\u0e0a\u0e48\u0e19 120):", min_value=1, step=1, value=1)
+        search_frame = st.number_input("ป้อนหมายเลขเฟรมที่ต้องการค้นหา (เช่น 120):", min_value=1, step=1, value=1)
         if search_frame is not None and not df_history.empty:
             max_processed = df_history["Frame Index"].max()
             if search_frame > max_processed:
-                st.error(f"\u274c \u0e22\u0e31\u0e07\u0e1b\u0e23\u0e30\u0e21\u0e27\u0e25\u0e1c\u0e25\u0e44\u0e1b\u0e44\u0e21\u0e48\u0e16\u0e36\u0e07\u0e40\u0e1f\u0e23\u0e21\u0e19\u0e35\u0e49 (\u0e1b\u0e23\u0e30\u0e21\u0e27\u0e25\u0e1c\u0e25\u0e16\u0e36\u0e07\u0e40\u0e1f\u0e23\u0e21\u0e2a\u0e39\u0e07\u0e2a\u0e38\u0e14: {max_processed})")
+                st.error(f"❌ ยังประมวลผลไปไม่ถึงเฟรมนี้ (ประมวลผลถึงเฟรมสูงสุด: {max_processed})")
             else:
                 match = df_history[df_history["Frame Index"] == search_frame]
                 if not match.empty:
                     row = match.iloc[0]
-                    st.success(f"\u0e1e\u0e1a\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e40\u0e1f\u0e23\u0e21\u0e17\u0e35\u0e48 {search_frame} (\u0e40\u0e27\u0e25\u0e32: {row['Timestamp (sec)']:.2f} \u0e27\u0e34\u0e19\u0e32\u0e17\u0e35)")
+                    st.success(f"พบข้อมูลเฟรมที่ {search_frame} (เวลา: {row['Timestamp (sec)']:.2f} วินาที)")
                     m_col1, m_col2 = st.columns(2)
                     with m_col1:
-                        st.write(f"**\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22\u0e0a\u0e48\u0e2d\u0e07\u0e17\u0e35\u0e48:** {row['Active Target Cell']}")
+                        st.write(f"**เป้าหมายช่องที่:** {row['Active Target Cell']}")
                         if row["Active Target Cell"] != "None":
-                            st.caption(f"\u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48\u0e40\u0e1b\u0e49\u0e32\u0e2b\u0e21\u0e32\u0e22: X: {row['Target X1 (%)']:.1f}%-{row['Target X2 (%)']:.1f}% | Y: {row['Target Y1 (%)']:.1f}%-{row['Target Y2 (%)']:.1f}%")
-                        st.write(f"**\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e0a\u0e19\u0e21\u0e37\u0e2d\u0e0b\u0e49\u0e32\u0e22 (Left Hit):** {row['Left Hand Hit']}")
-                        st.write(f"**\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e0a\u0e19\u0e21\u0e37\u0e2d\u0e02\u0e27\u0e32 (Right Hit):** {row['Right Hand Hit']}")
+                            st.caption(f"พื้นที่เป้าหมาย: X: {row['Target X1 (%)']:.1f}%-{row['Target X2 (%)']:.1f}% | Y: {row['Target Y1 (%)']:.1f}%-{row['Target Y2 (%)']:.1f}%")
+                        st.write(f"**สถานะชนมือซ้าย (Left Hit):** {row['Left Hand Hit']}")
+                        st.write(f"**สถานะชนมือขวา (Right Hit):** {row['Right Hand Hit']}")
                     with m_col2:
-                        st.write(f"**\u0e1e\u0e34\u0e01\u0e31\u0e14\u0e21\u0e37\u0e2d\u0e0b\u0e49\u0e32\u0e22 (Left Hand):** X: {row['Left Hand X (%)']} Y: {row['Left Hand Y (%)']}")
-                        st.write(f"**\u0e1e\u0e34\u0e01\u0e31\u0e14\u0e21\u0e37\u0e2d\u0e02\u0e27\u0e32 (Right Hand):** X: {row['Right Hand X (%)']} Y: {row['Right Hand Y (%)']}")
+                        st.write(f"**พิกัดมือซ้าย (Left Hand):** X: {row['Left Hand X (%)']} Y: {row['Left Hand Y (%)']}")
+                        st.write(f"**พิกัดมือขวา (Right Hand):** X: {row['Right Hand X (%)']} Y: {row['Right Hand Y (%)']}")
                 else:
-                    st.warning("\u26a0\ufe0f \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e40\u0e1f\u0e23\u0e21\u0e19\u0e35\u0e49 (\u0e2d\u0e32\u0e08\u0e42\u0e14\u0e19\u0e02\u0e49\u0e32\u0e21\u0e23\u0e30\u0e2b\u0e27\u0e48\u0e32\u0e07\u0e1b\u0e23\u0e30\u0e21\u0e27\u0e25\u0e1c\u0e25)")
+                    st.warning("⚠️ ไม่พบข้อมูลสำหรับเฟรมนี้ (อาจโดนข้ามระหว่างประมวลผล)")

@@ -28,17 +28,31 @@ interface EvaluationDashboardProps {
   reportLoading: boolean;
   onGenerateReport: () => void;
   onRestart: () => void;
+  recordedVideoUrl?: string | null;
 }
 
 const COLOR_LEFT = "#22d3ee";
 const COLOR_RIGHT = "#fb7185";
 
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipEntry {
+  color?: string;
+  fill?: string;
+  name?: string;
+  value?: number | string;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="glass-card px-3 py-2 text-xs space-y-1">
       <p className="text-slate-400 font-mono">{label}</p>
-      {payload.map((entry: any, i: number) => (
+      {payload.map((entry: TooltipEntry, i: number) => (
         <p key={i} style={{ color: entry.color || entry.fill }} className="font-semibold">
           {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(2) : entry.value}
         </p>
@@ -68,17 +82,17 @@ function StatCard({
       </h4>
       <div className="flex items-end justify-between">
         <div className="text-center flex-1">
-          <p className={`text-lg font-bold font-mono ${leftBetter ? "text-cyan-400" : "text-cyan-400/60"}`}>
+          <p className={`text-xl font-bold font-mono ${leftBetter ? "text-cyan-400" : "text-cyan-400/60"}`}>
             {leftVal.toFixed(1)}
-            <span className="text-[10px] text-slate-600 ml-1">{unit}</span>
+            <span className="text-lg text-slate-600 ml-1">{unit}</span>
           </p>
           <p className="text-[10px] text-slate-600 uppercase">Left</p>
         </div>
-        <div className="text-slate-700 text-xs px-2">vs</div>
+        <div className="text-slate-700 text-lg px-2">vs</div>
         <div className="text-center flex-1">
-          <p className={`text-lg font-bold font-mono ${!leftBetter ? "text-rose-400" : "text-rose-400/60"}`}>
+          <p className={`text-xl font-bold font-mono ${!leftBetter ? "text-rose-400" : "text-rose-400/60"}`}>
             {rightVal.toFixed(1)}
-            <span className="text-[10px] text-slate-600 ml-1">{unit}</span>
+            <span className="text-lg text-slate-600 ml-1">{unit}</span>
           </p>
           <p className="text-[10px] text-slate-600 uppercase">Right</p>
         </div>
@@ -87,12 +101,27 @@ function StatCard({
   );
 }
 
+function parseLineContent(text: string) {
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      return (
+        <strong key={i} className="font-bold text-slate-200">
+          {part}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
 export default function EvaluationDashboard({
   results,
   report,
   reportLoading,
   onGenerateReport,
   onRestart,
+  recordedVideoUrl,
 }: EvaluationDashboardProps) {
   // ── Derived chart data ──
 
@@ -167,19 +196,35 @@ export default function EvaluationDashboard({
             {results.totalReaches} reaches in {duration}s · {results.left.reaches} left · {results.right.reaches} right
           </p>
         </div>
-        <button onClick={onRestart} className="btn-secondary text-sm flex items-center gap-2" id="restart-test-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-          </svg>
-          Restart Test
-        </button>
+        <div className="flex items-center gap-3">
+          {recordedVideoUrl && (
+            <a
+              href={recordedVideoUrl}
+              download={`sarcopenia_assessment_${new Date().toISOString().slice(0, 10)}_${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.webm`}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-500/20 transition-all duration-200"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              ดาวน์โหลดวิดีโอที่บันทึก
+            </a>
+          )}
+          <button onClick={onRestart} className="btn-secondary text-sm flex items-center gap-2" id="restart-test-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
+            Restart Test
+          </button>
+        </div>
       </div>
 
       {/* ══ Hero Row: LNI + Stats ══ */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="glass-card-glow p-5 flex flex-col items-center justify-center">
-          <LNIGauge hits={results.totalReaches} misses={0} label="Target Hits" />
+          <LNIGauge hits={results.totalReaches} label="Target Hits" />
           <p className="text-xs text-slate-500 mt-3 text-center">
             Dominant: <span className="text-indigo-400 font-semibold">{moreActive} Arm</span>
           </p>
@@ -205,6 +250,27 @@ export default function EvaluationDashboard({
           unit=""
           higherIsBetter={false}
         />
+        <div className="glass-card p-4 space-y-2 flex flex-col">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Learned Non-Use Index (LNI)
+          </h4>
+          <div className="text-center py-2">
+            <p className={`text-2xl font-black font-mono ${
+              results.lniScore < 0.15 ? "text-emerald-400" :
+              results.lniScore < 0.35 ? "text-yellow-400" :
+              results.lniScore < 0.55 ? "text-orange-400" :
+              "text-rose-500"
+            }`}>
+              {(results.lniScore * 100).toFixed(1)}%
+            </p>
+            <p className="text-[10px] text-slate-500 uppercase mt-1">
+              {results.lniScore < 0.15 ? "✅ Low Risk" :
+               results.lniScore < 0.35 ? "⚠️ Mild Asymmetry" :
+               results.lniScore < 0.55 ? "🔶 Moderate Risk" :
+               "🔴 High Risk"}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* ══ Charts Row ══ */}
@@ -272,22 +338,28 @@ export default function EvaluationDashboard({
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLOR_LEFT }} />
             Left Arm
+            <span className="font-mono font-semibold" style={{ color: COLOR_LEFT }}>
+              {results.left.reaches} ครั้ง
+            </span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLOR_RIGHT }} />
             Right Arm
+            <span className="font-mono font-semibold" style={{ color: COLOR_RIGHT }}>
+              {results.right.reaches} ครั้ง
+            </span>
           </span>
         </div>
       </div>
 
-      {/* ══ AI Report ══ */}
+      {/* ══ Clinical Report ══ */}
       <div className="glass-card-glow p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-              🤖 Virtual Physio Report
+              Clinical Screening Report
             </h3>
-            <p className="text-xs text-slate-600 mt-0.5">AI-powered clinical analysis</p>
+            <p className="text-xs text-slate-600 mt-0.5">Automated rule-based kinematic analysis</p>
           </div>
           {!report && (
             <button
@@ -317,12 +389,12 @@ export default function EvaluationDashboard({
                   return <h4 key={i} className="text-sm font-bold text-violet-400 mt-4 mb-1">{line.replace(/^#+\s*/, "")}</h4>;
                 }
                 if (line.startsWith("- ") || line.startsWith("* ")) {
-                  return <p key={i} className="text-sm text-slate-300 pl-4 py-0.5">• {line.slice(2)}</p>;
+                  return <p key={i} className="text-sm text-slate-300 pl-4 py-0.5">• {parseLineContent(line.slice(2))}</p>;
                 }
                 if (line.startsWith("**") && line.endsWith("**")) {
-                  return <p key={i} className="text-sm font-bold text-slate-200 mt-2">{line.replace(/\*\*/g, "")}</p>;
+                  return <p key={i} className="text-sm font-bold text-slate-200 mt-2">{parseLineContent(line.slice(2, -2))}</p>;
                 }
-                return <p key={i} className="text-sm text-slate-400 leading-relaxed">{line}</p>;
+                return <p key={i} className="text-sm text-slate-400 leading-relaxed">{parseLineContent(line)}</p>;
               })}
             </div>
           </div>
@@ -330,7 +402,7 @@ export default function EvaluationDashboard({
 
         {!report && !reportLoading && (
           <p className="text-sm text-slate-600 text-center py-4">
-            Click <span className="text-indigo-400 font-medium">&quot;Generate Clinical Report&quot;</span> for AI analysis
+            Click <span className="text-indigo-400 font-medium">&quot;Generate Clinical Report&quot;</span> for the kinematic analysis
           </p>
         )}
       </div>

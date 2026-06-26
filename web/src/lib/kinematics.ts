@@ -24,11 +24,10 @@ export interface Point3D {
 }
 
 export interface ArmMetrics {
-  speed: number;         // px/s — instantaneous speed
-  acceleration: number;  // px/s² — instantaneous acceleration
-  jerk: number;          // px/s³ — rate of change of acceleration (smoothness)
-  straightness: number;  // 0-1 — ratio of displacement to path length
-  rom: number;           // range of motion angle in degrees
+  speed: number;         // normalized units/s — instantaneous wrist speed
+  acceleration: number;  // normalized units/s² — instantaneous acceleration
+  jerk: number;          // normalized units/s³ — rate of change of acceleration (smoothness)
+  rom: number;           // shoulder elevation angle in degrees
 }
 
 export interface FrameData {
@@ -39,6 +38,8 @@ export interface FrameData {
   rightElbow: Point3D;
   leftShoulder: Point3D;
   rightShoulder: Point3D;
+  leftHip: Point3D;
+  rightHip: Point3D;
   leftMetrics: ArmMetrics;
   rightMetrics: ArmMetrics;
   lniScore: number;      // Learned Non-Use Index: 0 = equal, 1 = max asymmetry
@@ -50,14 +51,20 @@ function dist(a: Point3D, b: Point3D): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
 }
 
-function angleBetween(shoulder: Point3D, elbow: Point3D, wrist: Point3D): number {
-  const v1 = { x: shoulder.x - elbow.x, y: shoulder.y - elbow.y, z: shoulder.z - elbow.z };
-  const v2 = { x: wrist.x - elbow.x, y: wrist.y - elbow.y, z: wrist.z - elbow.z };
-  const dot = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
-  const mag1 = Math.sqrt(v1.x ** 2 + v1.y ** 2 + v1.z ** 2);
-  const mag2 = Math.sqrt(v2.x ** 2 + v2.y ** 2 + v2.z ** 2);
-  if (mag1 === 0 || mag2 === 0) return 0;
-  const cosAngle = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+/**
+ * Shoulder elevation/abduction angle — the angle between the upper arm
+ * (shoulder→elbow) and the torso (shoulder→hip).
+ * This matches the Streamlit analyzer's `calculate_shoulder_angle`, so both
+ * systems measure the SAME joint and the values are directly comparable.
+ */
+function shoulderAngle(shoulder: Point3D, elbow: Point3D, hip: Point3D): number {
+  const vArm = { x: elbow.x - shoulder.x, y: elbow.y - shoulder.y, z: elbow.z - shoulder.z };
+  const vTorso = { x: hip.x - shoulder.x, y: hip.y - shoulder.y, z: hip.z - shoulder.z };
+  const dot = vArm.x * vTorso.x + vArm.y * vTorso.y + vArm.z * vTorso.z;
+  const magArm = Math.sqrt(vArm.x ** 2 + vArm.y ** 2 + vArm.z ** 2);
+  const magTorso = Math.sqrt(vTorso.x ** 2 + vTorso.y ** 2 + vTorso.z ** 2);
+  if (magArm === 0 || magTorso === 0) return 0;
+  const cosAngle = Math.max(-1, Math.min(1, dot / (magArm * magTorso)));
   return (Math.acos(cosAngle) * 180) / Math.PI;
 }
 
@@ -66,10 +73,6 @@ function angleBetween(shoulder: Point3D, elbow: Point3D, wrist: Point3D): number
 export class KinematicsBuffer {
   private buffer: FrameData[] = [];
   private readonly maxSize: number;
-
-  // Accumulators for path length (for straightness)
-  private leftPathLength = 0;
-  private rightPathLength = 0;
 
   // Track min/max ROM over the window
   private leftMinROM = Infinity;
@@ -103,6 +106,8 @@ export class KinematicsBuffer {
     const rightElbow = landmarks[LANDMARKS.RIGHT_ELBOW];
     const leftShoulder = landmarks[LANDMARKS.LEFT_SHOULDER];
     const rightShoulder = landmarks[LANDMARKS.RIGHT_SHOULDER];
+    const leftHip = landmarks[LANDMARKS.LEFT_HIP];
+    const rightHip = landmarks[LANDMARKS.RIGHT_HIP];
 
     const prev = this.buffer[this.buffer.length - 1];
     const prevPrev = this.buffer[this.buffer.length - 2];
@@ -123,27 +128,9 @@ export class KinematicsBuffer {
     const leftJerk = prevPrev ? Math.abs(leftAccel - prev.leftMetrics.acceleration) / dtSafe : 0;
     const rightJerk = prevPrev ? Math.abs(rightAccel - prev.rightMetrics.acceleration) / dtSafe : 0;
 
-    // ── Path length accumulation ──
-    if (prev) {
-      this.leftPathLength += dist(leftWrist, prev.leftWrist);
-      this.rightPathLength += dist(rightWrist, prev.rightWrist);
-    }
-
-    // ── Straightness — displacement / path length ──
-    const leftStartWrist = this.buffer.length > 0 ? this.buffer[0].leftWrist : leftWrist;
-    const rightStartWrist = this.buffer.length > 0 ? this.buffer[0].rightWrist : rightWrist;
-    const leftDisplacement = dist(leftWrist, leftStartWrist);
-    const rightDisplacement = dist(rightWrist, rightStartWrist);
-    const leftStraightness = this.leftPathLength > 0.001
-      ? Math.min(1, leftDisplacement / this.leftPathLength)
-      : 1;
-    const rightStraightness = this.rightPathLength > 0.001
-      ? Math.min(1, rightDisplacement / this.rightPathLength)
-      : 1;
-
-    // ── ROM (Range of Motion) — elbow angle ──
-    const leftROM = angleBetween(leftShoulder, leftElbow, leftWrist);
-    const rightROM = angleBetween(rightShoulder, rightElbow, rightWrist);
+    // ── ROM — shoulder elevation angle (matches the Streamlit analyzer) ──
+    const leftROM = shoulderAngle(leftShoulder, leftElbow, leftHip);
+    const rightROM = shoulderAngle(rightShoulder, rightElbow, rightHip);
     this.leftMinROM = Math.min(this.leftMinROM, leftROM);
     this.leftMaxROM = Math.max(this.leftMaxROM, leftROM);
     this.rightMinROM = Math.min(this.rightMinROM, rightROM);
@@ -153,7 +140,6 @@ export class KinematicsBuffer {
       speed: leftSpeed,
       acceleration: leftAccel,
       jerk: leftJerk,
-      straightness: leftStraightness,
       rom: leftROM,
     };
 
@@ -161,7 +147,6 @@ export class KinematicsBuffer {
       speed: rightSpeed,
       acceleration: rightAccel,
       jerk: rightJerk,
-      straightness: rightStraightness,
       rom: rightROM,
     };
 
@@ -176,6 +161,8 @@ export class KinematicsBuffer {
       rightElbow,
       leftShoulder,
       rightShoulder,
+      leftHip,
+      rightHip,
       leftMetrics,
       rightMetrics,
       lniScore,
@@ -192,8 +179,18 @@ export class KinematicsBuffer {
   }
 
   /**
-   * Compute Learned Non-Use Index.
-   * Combines asymmetry in speed, ROM delta, jerk, and usage frequency.
+   * Compute the LIVE (real-time) Learned Non-Use Index preview.
+   *
+   * This is a 3-axis preview shown while the user is moving: it blends
+   * asymmetry in average wrist SPEED, shoulder ROM range, and movement JERK.
+   * It does NOT include usage/choice frequency because no reach targets have
+   * been completed yet during free movement.
+   *
+   * The authoritative end-of-test score is computed separately in
+   * `aggregateResults` (game-engine.ts), which adds a 4th axis (which arm the
+   * user actually CHOSE to reach with). The two intentionally differ in scope:
+   * this one previews motor asymmetry, the final one scores behavioural non-use.
+   *
    * Returns 0–1 where 0 = perfectly symmetric, 1 = maximum asymmetry.
    */
   private computeLNI(left: ArmMetrics, right: ArmMetrics): number {
@@ -271,24 +268,31 @@ export class KinematicsBuffer {
       lniSum += f.lniScore;
     }
 
+    // Straightness is intentionally NOT derived from the continuous pose buffer.
+    // It is a per-reach quality metric: the consumer (page.tsx) computes the
+    // per-arm average from completed reach records, so a reach made with one arm
+    // never alters the other arm's value. We expose 0 as a neutral placeholder
+    // that the consumer overrides.
     return {
       frameCount: n,
       durationMs: this.buffer[n - 1].timestamp - this.buffer[0].timestamp,
       left: {
         avgSpeed: leftSpeedSum / n,
+        avgReachTime: 0,
         maxSpeed: leftSpeedMax,
         avgJerk: leftJerkSum / n,
         romRange: this.leftMaxROM - this.leftMinROM,
         currentROM: this.buffer[n - 1].leftMetrics.rom,
-        currentStraightness: this.buffer[n - 1].leftMetrics.straightness,
+        avgStraightness: 0,
       },
       right: {
         avgSpeed: rightSpeedSum / n,
+        avgReachTime: 0,
         maxSpeed: rightSpeedMax,
         avgJerk: rightJerkSum / n,
         romRange: this.rightMaxROM - this.rightMinROM,
         currentROM: this.buffer[n - 1].rightMetrics.rom,
-        currentStraightness: this.buffer[n - 1].rightMetrics.straightness,
+        avgStraightness: 0,
       },
       avgLNI: lniSum / n,
       currentLNI: this.buffer[n - 1].lniScore,
@@ -329,8 +333,6 @@ export class KinematicsBuffer {
 
   reset() {
     this.buffer = [];
-    this.leftPathLength = 0;
-    this.rightPathLength = 0;
     this.leftMinROM = Infinity;
     this.leftMaxROM = -Infinity;
     this.rightMinROM = Infinity;

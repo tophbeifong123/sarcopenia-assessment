@@ -54,9 +54,12 @@ export default function HomePage() {
   const [results, setResults] = useState<GameResults | null>(null);
   const [report, setReport] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
-  const [postureAchieved, setPostureAchieved] = useState(false);
+  const [, setPostureAchieved] = useState(false);
   const [countdownProgress, setCountdownProgress] = useState(0);
   const [mirrorView, setMirrorView] = useState(true);
+  const [recordVideo, setRecordVideo] = useState(false);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+  const [score, setScore] = useState(0);
 
   const reachesRef = useRef<ReachRecord[]>([]);
   const reachStartTimeRef = useRef<number>(0);
@@ -69,6 +72,27 @@ export default function HomePage() {
     if (frameCountRef.current % 4 === 0) {
       const newChartData = kinematicsBuffer.current.getChartData(80);
       const newStats = kinematicsBuffer.current.getAggregatedStats();
+
+      if (newStats) {
+        // Straightness must reflect PER-REACH movement quality, updated only
+        // for the arm that actually completed each reach. We therefore derive
+        // it from the completed reach records (not the continuous pose buffer),
+        // so a right-arm reach never changes the left arm's straightness, and
+        // vice versa. The displayed value is the average over that arm's reaches.
+        const reaches = reachesRef.current;
+        let leftSum = 0, leftCount = 0;
+        let rightSum = 0, rightCount = 0;
+        let leftTimeSum = 0, rightTimeSum = 0;
+        for (const r of reaches) {
+          if (r.arm === "left") { leftSum += r.straightness; leftTimeSum += r.reachTimeMs; leftCount++; }
+          else { rightSum += r.straightness; rightTimeSum += r.reachTimeMs; rightCount++; }
+        }
+        newStats.left.avgStraightness = leftCount > 0 ? leftSum / leftCount : 0;
+        newStats.right.avgStraightness = rightCount > 0 ? rightSum / rightCount : 0;
+        newStats.left.avgReachTime = leftCount > 0 ? leftTimeSum / leftCount : 0;
+        newStats.right.avgReachTime = rightCount > 0 ? rightTimeSum / rightCount : 0;
+      }
+
       setChartData(newChartData);
       setStats(newStats);
     }
@@ -88,6 +112,8 @@ export default function HomePage() {
     setHitFlashCell(null);
     setPostureAchieved(false);
     reachesRef.current = [];
+    setScore(0);
+    setRecordedVideoUrl(null);
   }, []);
 
   // End standard 90s trial
@@ -139,12 +165,14 @@ export default function HomePage() {
 
     // Set game stats
     reachesRef.current = [];
+    setScore(0);
     setCountdown(90);
     const startCell = Math.floor(Math.random() * 9);
     setActiveCell(startCell);
     setResults(null);
     setReport(null);
     setHitFlashCell(null);
+    setRecordedVideoUrl(null);
 
     // Play chime and transition state
     playStartChime();
@@ -226,6 +254,7 @@ export default function HomePage() {
     const reachIndex = reachesRef.current.length + 1;
     const record = processHit(hitData, reachIndex);
     reachesRef.current.push(record);
+    setScore(reachesRef.current.length);
 
     // Neon hit flash on the target cell
     setHitFlashCell(cellIndex);
@@ -329,7 +358,7 @@ export default function HomePage() {
                 </span>
                 <span className="text-xs text-slate-400">|</span>
                 <span className={`text-xs font-mono font-medium ${countdown <= 3 ? "text-rose-400/80" : "text-slate-400"}`}>
-                  Score: {reachesRef.current.length}
+                  Score: {score}
                 </span>
               </div>
             )}
@@ -399,6 +428,7 @@ export default function HomePage() {
             reportLoading={reportLoading}
             onGenerateReport={handleGenerateReport}
             onRestart={handleRestart}
+            recordedVideoUrl={recordedVideoUrl}
           />
         ) : (
           <>
@@ -416,6 +446,24 @@ export default function HomePage() {
                       This clinical test measures upper extremity coordination, reach duration, movement smoothness, and path straightness. 
                       Move both arms in front of the camera, then click below to prepare. Place your hands in the highlighted top corners to start!
                     </p>
+                    
+                    {/* Premium Video Recording Switch */}
+                    <div className="flex items-center justify-center gap-3 py-2 bg-slate-900/30 rounded-xl border border-white/5 max-w-[240px] mx-auto">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">อัดวิดีโอ:</span>
+                      <button
+                        onClick={() => setRecordVideo(!recordVideo)}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors duration-200 cursor-pointer ${
+                          recordVideo ? "bg-indigo-500" : "bg-slate-800"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 ${
+                            recordVideo ? "translate-x-5.5" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
                     <button
                       id="start-9-grid-btn"
                       onClick={() => setTestState("STARTING_POSTURE")}
@@ -484,8 +532,10 @@ export default function HomePage() {
                     hitFlashCell={hitFlashCell}
                     onHit={handleHit}
                     onPostureAchieved={handlePostureAchieved}
-                    totalHits={reachesRef.current.length}
+                    totalHits={score}
                     mirrorView={mirrorView}
+                    recordVideo={recordVideo}
+                    onRecordingComplete={setRecordedVideoUrl}
                   />
 
                   {/* Absolute Countdown Overlay */}
@@ -572,7 +622,7 @@ export default function HomePage() {
 
               {/* Metrics Panel — takes 1/3 */}
               <div>
-                <MetricsPanel stats={stats} hits={reachesRef.current.length} />
+                <MetricsPanel stats={stats} hits={score} />
               </div>
             </div>
 

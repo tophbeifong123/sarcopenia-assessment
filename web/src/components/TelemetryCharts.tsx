@@ -31,12 +31,24 @@ const COLOR_RIGHT = "#fb7185";
 
 const chartMargin = { top: 4, right: 8, bottom: 4, left: -10 };
 
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipEntry {
+  color?: string;
+  name?: string;
+  value?: number | string;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="glass-card px-3 py-2 text-xs space-y-1">
       <p className="text-slate-400 font-mono">{label}s</p>
-      {payload.map((entry: any, i: number) => (
+      {payload.map((entry: TooltipEntry, i: number) => (
         <p key={i} style={{ color: entry.color }} className="font-semibold">
           {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(1) : entry.value}
         </p>
@@ -80,7 +92,7 @@ export default function TelemetryCharts({ data }: TelemetryChartsProps) {
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {/* Speed Chart */}
       <ChartCard
-        title="Arm Speed (px/s)"
+        title="Arm Speed (norm/s)"
         badge={
           latest && (
             <div className="flex items-center gap-3 text-xs font-mono">

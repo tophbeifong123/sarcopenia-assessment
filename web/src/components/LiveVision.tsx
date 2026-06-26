@@ -8,8 +8,8 @@ import React, {
 } from "react";
 import Webcam from "react-webcam";
 import { KinematicsBuffer, type FrameData, type Point3D } from "@/lib/kinematics";
-import { drawSkeleton, drawGrid, drawHitSparkle } from "@/lib/drawing";
-import { TestState, isPointInCell, isCircleCollidingWithCell, type PathPoint } from "@/lib/game-engine";
+import { drawSkeleton, drawGrid, drawHitSparkle, getCoverFit } from "@/lib/drawing";
+import { TestState, isCircleCollidingWithCell, type PathPoint } from "@/lib/game-engine";
 
 // MediaPipe Pose types (loaded via CDN script, available on window)
 interface MediaPipePose {
@@ -53,6 +53,8 @@ interface LiveVisionProps {
   onPostureAchieved: (achieved: boolean) => void;
   totalHits?: number;
   mirrorView?: boolean;
+  recordVideo?: boolean;
+  onRecordingComplete?: (videoUrl: string) => void;
 }
 
 /**
@@ -123,6 +125,8 @@ export default function LiveVision({
   onPostureAchieved,
   totalHits,
   mirrorView = true,
+  recordVideo = false,
+  onRecordingComplete,
 }: LiveVisionProps) {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -132,6 +136,8 @@ export default function LiveVision({
   const [loading, setLoading] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState("Loading AI Model...");
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
+  // Native video frame size that MediaPipe normalized coords are relative to.
+  const videoSizeRef = useRef({ width: 640, height: 480 });
 
   // Refs for game mechanics to prevent stale closures in pose.onResults
   const testStateRef = useRef(testState);
@@ -146,6 +152,82 @@ export default function LiveVision({
   const sparkleRef = useRef<{ x: number; y: number; startTime: number } | null>(null);
   const hitTriggeredRef = useRef<boolean>(false);
   const lastVideoTimeRef = useRef<number>(-1);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
+  // Manage video recording
+  useEffect(() => {
+    if (recordVideo && testState === "PLAYING") {
+      const canvas = canvasRef.current;
+      const webcamStream = webcamRef.current?.stream;
+      
+      let stream: MediaStream | null = null;
+      if (canvas && typeof canvas.captureStream === "function") {
+        stream = canvas.captureStream(30);
+      } else if (webcamStream) {
+        stream = webcamStream;
+      }
+
+      if (stream) {
+        recordedChunksRef.current = [];
+        let mediaRecorder: MediaRecorder;
+        
+        const mimeTypes = [
+          "video/webm;codecs=vp9",
+          "video/webm;codecs=vp8",
+          "video/webm",
+          "video/mp4"
+        ];
+        let selectedMimeType = "";
+        for (const type of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type;
+            break;
+          }
+        }
+        
+        try {
+          const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
+          mediaRecorder = new MediaRecorder(stream, options);
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunksRef.current.push(event.data);
+            }
+          };
+          
+          mediaRecorder.onstop = () => {
+            if (recordedChunksRef.current.length > 0) {
+              const blob = new Blob(recordedChunksRef.current, {
+                type: selectedMimeType || "video/webm"
+              });
+              const url = URL.createObjectURL(blob);
+              if (onRecordingComplete) {
+                onRecordingComplete(url);
+              }
+            }
+          };
+          
+          mediaRecorderRef.current = mediaRecorder;
+          mediaRecorder.start(1000); // 1-second chunks
+        } catch (err) {
+          console.error("Failed to start MediaRecorder:", err);
+        }
+      }
+    } else {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [testState, recordVideo, onRecordingComplete]);
 
   useEffect(() => {
     testStateRef.current = testState;
@@ -206,9 +288,22 @@ export default function LiveVision({
           if (!ctx) return;
 
           const landmarks = results.poseLandmarks;
+          const isRecording = recordVideo && testStateRef.current === "PLAYING";
 
-          // Clear canvas on every frame to prevent trailing skeleton trails and opacity accumulation
+          // Reset any prior transform and clear the full bitmap.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          const videoEl = webcamRef.current?.video;
+          const vW = videoEl?.videoWidth || videoSizeRef.current.width;
+          const vH = videoEl?.videoHeight || videoSizeRef.current.height;
+          const fit = getCoverFit(canvas.width, canvas.height, vW, vH);
+
+          // Draw the video frame directly onto the canvas if recording is active
+          if (isRecording && videoEl) {
+            ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
+            ctx.drawImage(videoEl, 0, 0, vW, vH);
+          }
 
           if (landmarks && landmarks.length >= 33) {
             const timestamp = performance.now();
@@ -218,13 +313,18 @@ export default function LiveVision({
 
             const frame = kinematicsBuffer.current.push(correctedLandmarks, timestamp);
 
+            // Apply scaling transform if not already done for the video
+            if (!isRecording) {
+              ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
+            }
+
             // Starting posture verification
             if (testStateRef.current === "STARTING_POSTURE" || testStateRef.current === "COUNTDOWN") {
               const leftWrist = correctedLandmarks[15];
               const rightWrist = correctedLandmarks[16];
 
-              const leftHandCell = getHandCellIndex(leftWrist, canvas.width, canvas.height);
-              const rightHandCell = getHandCellIndex(rightWrist, canvas.width, canvas.height);
+              const leftHandCell = getHandCellIndex(leftWrist, vW, vH);
+              const rightHandCell = getHandCellIndex(rightWrist, vW, vH);
 
               // We need one hand in Cell 1 (index 0) and one hand in Cell 3 (index 2)
               const isPostureCorrect =
@@ -241,8 +341,8 @@ export default function LiveVision({
             drawSkeleton(
               ctx,
               correctedLandmarks,
-              canvas.width,
-              canvas.height,
+              vW,
+              vH,
               frame.leftMetrics,
               frame.rightMetrics,
               totalHits,
@@ -253,8 +353,8 @@ export default function LiveVision({
             if (testStateRef.current !== "EVALUATING") {
               drawGrid(
                 ctx,
-                canvas.width,
-                canvas.height,
+                vW,
+                vH,
                 activeCellRef.current,
                 testStateRef.current,
                 hitFlashCellRef.current,
@@ -271,8 +371,8 @@ export default function LiveVision({
                   ctx,
                   sparkleRef.current.x,
                   sparkleRef.current.y,
-                  canvas.width,
-                  canvas.height,
+                  vW,
+                  vH,
                   elapsed / duration
                 );
               } else {
@@ -293,12 +393,12 @@ export default function LiveVision({
                   t: timestamp,
                 });
 
-                if (isCircleCollidingWithCell(leftWrist.x, leftWrist.y, activeCellRef.current, canvas.width, canvas.height, 28)) {
+                if (isCircleCollidingWithCell(leftWrist.x, leftWrist.y, activeCellRef.current, vW, vH, 28)) {
                   hitTriggeredRef.current = true;
                   sparkleRef.current = { x: leftWrist.x, y: leftWrist.y, startTime: timestamp };
                   
-                  const leftHandCell = getHandCellIndex(leftWrist, canvas.width, canvas.height);
-                  const rightHandCell = getHandCellIndex(rightWrist, canvas.width, canvas.height);
+                  const leftHandCell = getHandCellIndex(leftWrist, vW, vH);
+                  const rightHandCell = getHandCellIndex(rightWrist, vW, vH);
                   
                   onHitRef.current("left", activeCellRef.current, [...leftWristPathRef.current], leftHandCell, rightHandCell);
                 }
@@ -312,12 +412,12 @@ export default function LiveVision({
                   t: timestamp,
                 });
 
-                if (isCircleCollidingWithCell(rightWrist.x, rightWrist.y, activeCellRef.current, canvas.width, canvas.height, 28)) {
+                if (isCircleCollidingWithCell(rightWrist.x, rightWrist.y, activeCellRef.current, vW, vH, 28)) {
                   hitTriggeredRef.current = true;
                   sparkleRef.current = { x: rightWrist.x, y: rightWrist.y, startTime: timestamp };
                   
-                  const leftHandCell = getHandCellIndex(leftWrist, canvas.width, canvas.height);
-                  const rightHandCell = getHandCellIndex(rightWrist, canvas.width, canvas.height);
+                  const leftHandCell = getHandCellIndex(leftWrist, vW, vH);
+                  const rightHandCell = getHandCellIndex(rightWrist, vW, vH);
 
                   onHitRef.current("right", activeCellRef.current, [...rightWristPathRef.current], leftHandCell, rightHandCell);
                 }
@@ -328,7 +428,14 @@ export default function LiveVision({
               onFrame(frame);
             }
           } else {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // If landmarks are missing but we are recording, we still need to draw the video onto the canvas
+            // so we don't have blank spaces in the recorded canvas stream.
+            if (isRecording && videoEl) {
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+            } else {
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
           }
         });
 
@@ -357,49 +464,60 @@ export default function LiveVision({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Detection loop
-  const detect = useCallback(async () => {
-    if (
-      !webcamRef.current ||
-      !webcamRef.current.video ||
-      !poseRef.current ||
-      !isRunning
-    ) {
-      animFrameRef.current = requestAnimationFrame(detect);
-      return;
-    }
+  // Start/stop detection loop
+  useEffect(() => {
+    let active = true;
 
-    const video = webcamRef.current.video;
-    if (video.readyState !== 4) {
-      animFrameRef.current = requestAnimationFrame(detect);
-      return;
-    }
+    async function runDetection() {
+      if (!active) return;
 
-    // Only run inference if a new frame has actually been captured by the webcam!
-    // This prevents double-inference at 60Hz on a 30Hz video feed, saving 50% CPU/GPU load.
-    if (video.currentTime !== lastVideoTimeRef.current) {
-      lastVideoTimeRef.current = video.currentTime;
-      try {
-        await poseRef.current.send({ image: video });
-      } catch {
-        // MediaPipe can throw if busy — just skip frame
+      if (
+        !webcamRef.current ||
+        !webcamRef.current.video ||
+        !poseRef.current ||
+        !isRunning
+      ) {
+        if (active) {
+          animFrameRef.current = requestAnimationFrame(runDetection);
+        }
+        return;
+      }
+
+      const video = webcamRef.current.video;
+      if (video.readyState !== 4) {
+        if (active) {
+          animFrameRef.current = requestAnimationFrame(runDetection);
+        }
+        return;
+      }
+
+      // Only run inference if a new frame has actually been captured by the webcam!
+      // This prevents double-inference at 60Hz on a 30Hz video feed, saving 50% CPU/GPU load.
+      if (video.currentTime !== lastVideoTimeRef.current) {
+        lastVideoTimeRef.current = video.currentTime;
+        try {
+          await poseRef.current.send({ image: video });
+        } catch {
+          // MediaPipe can throw if busy — just skip frame
+        }
+      }
+
+      if (active) {
+        animFrameRef.current = requestAnimationFrame(runDetection);
       }
     }
 
-    animFrameRef.current = requestAnimationFrame(detect);
-  }, [isRunning]);
-
-  // Start/stop detection loop
-  useEffect(() => {
     if (cameraReady && !loading) {
-      animFrameRef.current = requestAnimationFrame(detect);
+      animFrameRef.current = requestAnimationFrame(runDetection);
     }
+
     return () => {
+      active = false;
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [cameraReady, loading, detect]);
+  }, [cameraReady, loading, isRunning]);
 
   // Handle camera ready
   const handleUserMedia = useCallback(() => {
@@ -409,8 +527,10 @@ export default function LiveVision({
       const w = video.videoWidth || 640;
       const h = video.videoHeight || 480;
       setDimensions({ width: w, height: h });
+      videoSizeRef.current = { width: w, height: h };
     }
   }, []);
+
 
   return (
     <div className="webcam-container" style={{ aspectRatio: `${dimensions.width}/${dimensions.height}` }}>
@@ -430,6 +550,7 @@ export default function LiveVision({
         audio={false}
         mirrored={mirrorView}
         onUserMedia={handleUserMedia}
+        onLoadedMetadata={handleUserMedia}
         videoConstraints={{
           width: 1280,
           height: 720,
@@ -462,8 +583,14 @@ export default function LiveVision({
 
       {/* Top-left status */}
       {cameraReady && isRunning && !loading && (
-        <div className="absolute top-4 left-4 z-10">
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
           <span className="status-live">Live Analysis</span>
+          {recordVideo && testState === "PLAYING" && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+              REC
+            </span>
+          )}
         </div>
       )}
 

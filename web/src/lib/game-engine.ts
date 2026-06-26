@@ -284,27 +284,35 @@ export function aggregateResults(
   const leftStats = calcArmStats(left);
   const rightStats = calcArmStats(right);
 
-  // ── LNI Calculation ──
+  // ── LNI Calculation (authoritative end-of-test score) ──
+  //
+  // This is the 4-axis score: it blends asymmetry in reach SPEED (time),
+  // path STRAIGHTNESS, movement JERK, and — crucially — USAGE FREQUENCY
+  // (which arm the user actually chose to reach with). The live preview in
+  // kinematics.ts is a 3-axis motor-only estimate; this one is the clinical
+  // result because choosing not to use an arm is the core sign of non-use.
+  // Returns 0–1 where 0 = perfectly symmetric, 1 = maximum asymmetry.
   let lniScore = 0;
   if (leftStats.reaches > 0 && rightStats.reaches > 0) {
-    // Speed asymmetry: difference in average reach time
+    // Speed asymmetry: relative difference in average reach time (0–1)
     const maxAvgTime = Math.max(leftStats.avgReachTime, rightStats.avgReachTime);
     const speedAsym = maxAvgTime > 0
       ? Math.abs(leftStats.avgReachTime - rightStats.avgReachTime) / maxAvgTime
       : 0;
 
-    // Straightness asymmetry
+    // Straightness asymmetry — both values are already in 0–1, so their
+    // absolute difference is also bounded to 0–1.
     const straightAsym = Math.abs(
       leftStats.avgStraightness - rightStats.avgStraightness
     );
 
-    // Jerk asymmetry
+    // Jerk asymmetry (0–1)
     const totalJerk = leftStats.avgJerk + rightStats.avgJerk;
     const jerkAsym = totalJerk > 0
       ? Math.abs(leftStats.avgJerk - rightStats.avgJerk) / totalJerk
       : 0;
 
-    // Usage asymmetry — which arm is used more
+    // Usage asymmetry — which arm is used more (0–1)
     const totalReaches = leftStats.reaches + rightStats.reaches;
     const usageAsym = totalReaches > 0
       ? Math.abs(leftStats.reaches - rightStats.reaches) / totalReaches
@@ -317,6 +325,12 @@ export function aggregateResults(
       usageAsym * 0.30;
 
     lniScore = Math.min(1, Math.max(0, lniScore));
+  } else if (leftStats.reaches > 0 || rightStats.reaches > 0) {
+    // Only one arm was ever used to reach a target. This is total one-sided
+    // usage — the strongest behavioural sign of learned non-use — so usage
+    // asymmetry is maximal (1.0). We weight it by the usage axis and add a
+    // baseline for the unmeasurable motor axes of the unused arm.
+    lniScore = Math.min(1, 0.30 * 1.0 + 0.45);
   }
 
   return {
