@@ -69,6 +69,27 @@ export default function HomePage() {
     if (frameCountRef.current % 4 === 0) {
       const newChartData = kinematicsBuffer.current.getChartData(80);
       const newStats = kinematicsBuffer.current.getAggregatedStats();
+
+      if (newStats) {
+        // Straightness must reflect PER-REACH movement quality, updated only
+        // for the arm that actually completed each reach. We therefore derive
+        // it from the completed reach records (not the continuous pose buffer),
+        // so a right-arm reach never changes the left arm's straightness, and
+        // vice versa. The displayed value is the average over that arm's reaches.
+        const reaches = reachesRef.current;
+        let leftSum = 0, leftCount = 0;
+        let rightSum = 0, rightCount = 0;
+        let leftTimeSum = 0, rightTimeSum = 0;
+        for (const r of reaches) {
+          if (r.arm === "left") { leftSum += r.straightness; leftTimeSum += r.reachTimeMs; leftCount++; }
+          else { rightSum += r.straightness; rightTimeSum += r.reachTimeMs; rightCount++; }
+        }
+        newStats.left.avgStraightness = leftCount > 0 ? leftSum / leftCount : 0;
+        newStats.right.avgStraightness = rightCount > 0 ? rightSum / rightCount : 0;
+        newStats.left.avgReachTime = leftCount > 0 ? leftTimeSum / leftCount : 0;
+        newStats.right.avgReachTime = rightCount > 0 ? rightTimeSum / rightCount : 0;
+      }
+
       setChartData(newChartData);
       setStats(newStats);
     }

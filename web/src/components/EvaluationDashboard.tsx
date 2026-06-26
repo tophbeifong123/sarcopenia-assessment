@@ -87,6 +87,20 @@ function StatCard({
   );
 }
 
+function parseLineContent(text: string) {
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      return (
+        <strong key={i} className="font-bold text-slate-200">
+          {part}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
 export default function EvaluationDashboard({
   results,
   report,
@@ -177,7 +191,7 @@ export default function EvaluationDashboard({
       </div>
 
       {/* ══ Hero Row: LNI + Stats ══ */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="glass-card-glow p-5 flex flex-col items-center justify-center">
           <LNIGauge hits={results.totalReaches} label="Target Hits" />
           <p className="text-xs text-slate-500 mt-3 text-center">
@@ -205,6 +219,27 @@ export default function EvaluationDashboard({
           unit=""
           higherIsBetter={false}
         />
+        <div className="glass-card p-4 space-y-2 flex flex-col justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Learned Non-Use Index (LNI)
+          </h4>
+          <div className="text-center py-2">
+            <p className={`text-2xl font-black font-mono ${
+              results.lniScore < 0.15 ? "text-emerald-400" :
+              results.lniScore < 0.35 ? "text-yellow-400" :
+              results.lniScore < 0.55 ? "text-orange-400" :
+              "text-rose-500"
+            }`}>
+              {(results.lniScore * 100).toFixed(1)}%
+            </p>
+            <p className="text-[10px] text-slate-500 uppercase mt-1">
+              {results.lniScore < 0.15 ? "✅ Low Risk" :
+               results.lniScore < 0.35 ? "⚠️ Mild Asymmetry" :
+               results.lniScore < 0.55 ? "🔶 Moderate Risk" :
+               "🔴 High Risk"}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* ══ Charts Row ══ */}
@@ -272,10 +307,16 @@ export default function EvaluationDashboard({
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLOR_LEFT }} />
             Left Arm
+            <span className="font-mono font-semibold" style={{ color: COLOR_LEFT }}>
+              {results.left.reaches} ครั้ง
+            </span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLOR_RIGHT }} />
             Right Arm
+            <span className="font-mono font-semibold" style={{ color: COLOR_RIGHT }}>
+              {results.right.reaches} ครั้ง
+            </span>
           </span>
         </div>
       </div>
@@ -317,12 +358,12 @@ export default function EvaluationDashboard({
                   return <h4 key={i} className="text-sm font-bold text-violet-400 mt-4 mb-1">{line.replace(/^#+\s*/, "")}</h4>;
                 }
                 if (line.startsWith("- ") || line.startsWith("* ")) {
-                  return <p key={i} className="text-sm text-slate-300 pl-4 py-0.5">• {line.slice(2)}</p>;
+                  return <p key={i} className="text-sm text-slate-300 pl-4 py-0.5">• {parseLineContent(line.slice(2))}</p>;
                 }
                 if (line.startsWith("**") && line.endsWith("**")) {
-                  return <p key={i} className="text-sm font-bold text-slate-200 mt-2">{line.replace(/\*\*/g, "")}</p>;
+                  return <p key={i} className="text-sm font-bold text-slate-200 mt-2">{parseLineContent(line.slice(2, -2))}</p>;
                 }
-                return <p key={i} className="text-sm text-slate-400 leading-relaxed">{line}</p>;
+                return <p key={i} className="text-sm text-slate-400 leading-relaxed">{parseLineContent(line)}</p>;
               })}
             </div>
           </div>

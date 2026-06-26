@@ -8,8 +8,8 @@ import React, {
 } from "react";
 import Webcam from "react-webcam";
 import { KinematicsBuffer, type FrameData, type Point3D } from "@/lib/kinematics";
-import { drawSkeleton, drawGrid, drawHitSparkle } from "@/lib/drawing";
-import { TestState, isPointInCell, isCircleCollidingWithCell, type PathPoint } from "@/lib/game-engine";
+import { drawSkeleton, drawGrid, drawHitSparkle, getCoverFit } from "@/lib/drawing";
+import { TestState, isCircleCollidingWithCell, type PathPoint } from "@/lib/game-engine";
 
 // MediaPipe Pose types (loaded via CDN script, available on window)
 interface MediaPipePose {
@@ -132,6 +132,8 @@ export default function LiveVision({
   const [loading, setLoading] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState("Loading AI Model...");
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
+  // Native video frame size that MediaPipe normalized coords are relative to.
+  const videoSizeRef = useRef({ width: 640, height: 480 });
 
   // Refs for game mechanics to prevent stale closures in pose.onResults
   const testStateRef = useRef(testState);
@@ -207,7 +209,8 @@ export default function LiveVision({
 
           const landmarks = results.poseLandmarks;
 
-          // Clear canvas on every frame to prevent trailing skeleton trails and opacity accumulation
+          // Reset any prior transform and clear the full bitmap.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           if (landmarks && landmarks.length >= 33) {
@@ -218,13 +221,23 @@ export default function LiveVision({
 
             const frame = kinematicsBuffer.current.push(correctedLandmarks, timestamp);
 
+            // Map normalized landmark space onto the SAME object-fit:cover crop
+            // the browser applied to the <video>. We read the video element's
+            // live intrinsic size and rendered box so the skeleton/grid line up
+            // exactly, regardless of any box vs. camera aspect-ratio mismatch.
+            const videoEl = webcamRef.current?.video;
+            const vW = videoEl?.videoWidth || videoSizeRef.current.width;
+            const vH = videoEl?.videoHeight || videoSizeRef.current.height;
+            const fit = getCoverFit(canvas.width, canvas.height, vW, vH);
+            ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
+
             // Starting posture verification
             if (testStateRef.current === "STARTING_POSTURE" || testStateRef.current === "COUNTDOWN") {
               const leftWrist = correctedLandmarks[15];
               const rightWrist = correctedLandmarks[16];
 
-              const leftHandCell = getHandCellIndex(leftWrist, canvas.width, canvas.height);
-              const rightHandCell = getHandCellIndex(rightWrist, canvas.width, canvas.height);
+              const leftHandCell = getHandCellIndex(leftWrist, vW, vH);
+              const rightHandCell = getHandCellIndex(rightWrist, vW, vH);
 
               // We need one hand in Cell 1 (index 0) and one hand in Cell 3 (index 2)
               const isPostureCorrect =
@@ -241,8 +254,8 @@ export default function LiveVision({
             drawSkeleton(
               ctx,
               correctedLandmarks,
-              canvas.width,
-              canvas.height,
+              vW,
+              vH,
               frame.leftMetrics,
               frame.rightMetrics,
               totalHits,
@@ -253,8 +266,8 @@ export default function LiveVision({
             if (testStateRef.current !== "EVALUATING") {
               drawGrid(
                 ctx,
-                canvas.width,
-                canvas.height,
+                vW,
+                vH,
                 activeCellRef.current,
                 testStateRef.current,
                 hitFlashCellRef.current,
@@ -271,8 +284,8 @@ export default function LiveVision({
                   ctx,
                   sparkleRef.current.x,
                   sparkleRef.current.y,
-                  canvas.width,
-                  canvas.height,
+                  vW,
+                  vH,
                   elapsed / duration
                 );
               } else {
@@ -293,12 +306,12 @@ export default function LiveVision({
                   t: timestamp,
                 });
 
-                if (isCircleCollidingWithCell(leftWrist.x, leftWrist.y, activeCellRef.current, canvas.width, canvas.height, 28)) {
+                if (isCircleCollidingWithCell(leftWrist.x, leftWrist.y, activeCellRef.current, vW, vH, 28)) {
                   hitTriggeredRef.current = true;
                   sparkleRef.current = { x: leftWrist.x, y: leftWrist.y, startTime: timestamp };
                   
-                  const leftHandCell = getHandCellIndex(leftWrist, canvas.width, canvas.height);
-                  const rightHandCell = getHandCellIndex(rightWrist, canvas.width, canvas.height);
+                  const leftHandCell = getHandCellIndex(leftWrist, vW, vH);
+                  const rightHandCell = getHandCellIndex(rightWrist, vW, vH);
                   
                   onHitRef.current("left", activeCellRef.current, [...leftWristPathRef.current], leftHandCell, rightHandCell);
                 }
@@ -312,12 +325,12 @@ export default function LiveVision({
                   t: timestamp,
                 });
 
-                if (isCircleCollidingWithCell(rightWrist.x, rightWrist.y, activeCellRef.current, canvas.width, canvas.height, 28)) {
+                if (isCircleCollidingWithCell(rightWrist.x, rightWrist.y, activeCellRef.current, vW, vH, 28)) {
                   hitTriggeredRef.current = true;
                   sparkleRef.current = { x: rightWrist.x, y: rightWrist.y, startTime: timestamp };
                   
-                  const leftHandCell = getHandCellIndex(leftWrist, canvas.width, canvas.height);
-                  const rightHandCell = getHandCellIndex(rightWrist, canvas.width, canvas.height);
+                  const leftHandCell = getHandCellIndex(leftWrist, vW, vH);
+                  const rightHandCell = getHandCellIndex(rightWrist, vW, vH);
 
                   onHitRef.current("right", activeCellRef.current, [...rightWristPathRef.current], leftHandCell, rightHandCell);
                 }
@@ -328,6 +341,7 @@ export default function LiveVision({
               onFrame(frame);
             }
           } else {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
           }
         });
@@ -357,49 +371,60 @@ export default function LiveVision({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Detection loop
-  const detect = useCallback(async () => {
-    if (
-      !webcamRef.current ||
-      !webcamRef.current.video ||
-      !poseRef.current ||
-      !isRunning
-    ) {
-      animFrameRef.current = requestAnimationFrame(detect);
-      return;
-    }
+  // Start/stop detection loop
+  useEffect(() => {
+    let active = true;
 
-    const video = webcamRef.current.video;
-    if (video.readyState !== 4) {
-      animFrameRef.current = requestAnimationFrame(detect);
-      return;
-    }
+    async function runDetection() {
+      if (!active) return;
 
-    // Only run inference if a new frame has actually been captured by the webcam!
-    // This prevents double-inference at 60Hz on a 30Hz video feed, saving 50% CPU/GPU load.
-    if (video.currentTime !== lastVideoTimeRef.current) {
-      lastVideoTimeRef.current = video.currentTime;
-      try {
-        await poseRef.current.send({ image: video });
-      } catch {
-        // MediaPipe can throw if busy — just skip frame
+      if (
+        !webcamRef.current ||
+        !webcamRef.current.video ||
+        !poseRef.current ||
+        !isRunning
+      ) {
+        if (active) {
+          animFrameRef.current = requestAnimationFrame(runDetection);
+        }
+        return;
+      }
+
+      const video = webcamRef.current.video;
+      if (video.readyState !== 4) {
+        if (active) {
+          animFrameRef.current = requestAnimationFrame(runDetection);
+        }
+        return;
+      }
+
+      // Only run inference if a new frame has actually been captured by the webcam!
+      // This prevents double-inference at 60Hz on a 30Hz video feed, saving 50% CPU/GPU load.
+      if (video.currentTime !== lastVideoTimeRef.current) {
+        lastVideoTimeRef.current = video.currentTime;
+        try {
+          await poseRef.current.send({ image: video });
+        } catch {
+          // MediaPipe can throw if busy — just skip frame
+        }
+      }
+
+      if (active) {
+        animFrameRef.current = requestAnimationFrame(runDetection);
       }
     }
 
-    animFrameRef.current = requestAnimationFrame(detect);
-  }, [isRunning]);
-
-  // Start/stop detection loop
-  useEffect(() => {
     if (cameraReady && !loading) {
-      animFrameRef.current = requestAnimationFrame(detect);
+      animFrameRef.current = requestAnimationFrame(runDetection);
     }
+
     return () => {
+      active = false;
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [cameraReady, loading, detect]);
+  }, [cameraReady, loading, isRunning]);
 
   // Handle camera ready
   const handleUserMedia = useCallback(() => {
@@ -409,8 +434,10 @@ export default function LiveVision({
       const w = video.videoWidth || 640;
       const h = video.videoHeight || 480;
       setDimensions({ width: w, height: h });
+      videoSizeRef.current = { width: w, height: h };
     }
   }, []);
+
 
   return (
     <div className="webcam-container" style={{ aspectRatio: `${dimensions.width}/${dimensions.height}` }}>
@@ -430,6 +457,7 @@ export default function LiveVision({
         audio={false}
         mirrored={mirrorView}
         onUserMedia={handleUserMedia}
+        onLoadedMetadata={handleUserMedia}
         videoConstraints={{
           width: 1280,
           height: 720,

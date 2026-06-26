@@ -48,6 +48,39 @@ function isRightArmConnection(a: number, b: number): boolean {
     !LEFT_ARM_INDICES.has(a) && !LEFT_ARM_INDICES.has(b);
 }
 
+// ──────── Cover-Fit Transform ────────
+
+/**
+ * Compute the `object-fit: cover` mapping that scales a source frame
+ * (videoW x videoH) to fully fill a display box (boxW x boxH), cropping the
+ * overflow and centering it — exactly how the <video> element with
+ * `object-fit: cover` is rendered.
+ *
+ * Returns the scale and the top-left offset (in box pixels). Callers can then
+ * place a normalized landmark (nx, ny in [0..1]) at:
+ *   x = offsetX + nx * videoW * scale
+ *   y = offsetY + ny * videoH * scale
+ * so the skeleton / grid line up with the cropped, full-screen video.
+ */
+export function getCoverFit(
+  boxW: number,
+  boxH: number,
+  videoW: number,
+  videoH: number,
+): { scale: number; offsetX: number; offsetY: number } {
+  if (videoW <= 0 || videoH <= 0 || boxW <= 0 || boxH <= 0) {
+    return { scale: 1, offsetX: 0, offsetY: 0 };
+  }
+  const scale = Math.max(boxW / videoW, boxH / videoH);
+  const drawnW = videoW * scale;
+  const drawnH = videoH * scale;
+  return {
+    scale,
+    offsetX: (boxW - drawnW) / 2,
+    offsetY: (boxH - drawnH) / 2,
+  };
+}
+
 // ──────── Skeleton Drawing ────────
 
 export function drawSkeleton(

@@ -27,7 +27,6 @@ export interface ArmMetrics {
   speed: number;         // normalized units/s — instantaneous wrist speed
   acceleration: number;  // normalized units/s² — instantaneous acceleration
   jerk: number;          // normalized units/s³ — rate of change of acceleration (smoothness)
-  straightness: number;  // 0-1 — ratio of displacement to path length
   rom: number;           // shoulder elevation angle in degrees
 }
 
@@ -74,10 +73,6 @@ function shoulderAngle(shoulder: Point3D, elbow: Point3D, hip: Point3D): number 
 export class KinematicsBuffer {
   private buffer: FrameData[] = [];
   private readonly maxSize: number;
-
-  // Accumulators for path length (for straightness)
-  private leftPathLength = 0;
-  private rightPathLength = 0;
 
   // Track min/max ROM over the window
   private leftMinROM = Infinity;
@@ -133,24 +128,6 @@ export class KinematicsBuffer {
     const leftJerk = prevPrev ? Math.abs(leftAccel - prev.leftMetrics.acceleration) / dtSafe : 0;
     const rightJerk = prevPrev ? Math.abs(rightAccel - prev.rightMetrics.acceleration) / dtSafe : 0;
 
-    // ── Path length accumulation ──
-    if (prev) {
-      this.leftPathLength += dist(leftWrist, prev.leftWrist);
-      this.rightPathLength += dist(rightWrist, prev.rightWrist);
-    }
-
-    // ── Straightness — displacement / path length ──
-    const leftStartWrist = this.buffer.length > 0 ? this.buffer[0].leftWrist : leftWrist;
-    const rightStartWrist = this.buffer.length > 0 ? this.buffer[0].rightWrist : rightWrist;
-    const leftDisplacement = dist(leftWrist, leftStartWrist);
-    const rightDisplacement = dist(rightWrist, rightStartWrist);
-    const leftStraightness = this.leftPathLength > 0.001
-      ? Math.min(1, leftDisplacement / this.leftPathLength)
-      : 1;
-    const rightStraightness = this.rightPathLength > 0.001
-      ? Math.min(1, rightDisplacement / this.rightPathLength)
-      : 1;
-
     // ── ROM — shoulder elevation angle (matches the Streamlit analyzer) ──
     const leftROM = shoulderAngle(leftShoulder, leftElbow, leftHip);
     const rightROM = shoulderAngle(rightShoulder, rightElbow, rightHip);
@@ -163,7 +140,6 @@ export class KinematicsBuffer {
       speed: leftSpeed,
       acceleration: leftAccel,
       jerk: leftJerk,
-      straightness: leftStraightness,
       rom: leftROM,
     };
 
@@ -171,7 +147,6 @@ export class KinematicsBuffer {
       speed: rightSpeed,
       acceleration: rightAccel,
       jerk: rightJerk,
-      straightness: rightStraightness,
       rom: rightROM,
     };
 
@@ -293,24 +268,31 @@ export class KinematicsBuffer {
       lniSum += f.lniScore;
     }
 
+    // Straightness is intentionally NOT derived from the continuous pose buffer.
+    // It is a per-reach quality metric: the consumer (page.tsx) computes the
+    // per-arm average from completed reach records, so a reach made with one arm
+    // never alters the other arm's value. We expose 0 as a neutral placeholder
+    // that the consumer overrides.
     return {
       frameCount: n,
       durationMs: this.buffer[n - 1].timestamp - this.buffer[0].timestamp,
       left: {
         avgSpeed: leftSpeedSum / n,
+        avgReachTime: 0,
         maxSpeed: leftSpeedMax,
         avgJerk: leftJerkSum / n,
         romRange: this.leftMaxROM - this.leftMinROM,
         currentROM: this.buffer[n - 1].leftMetrics.rom,
-        currentStraightness: this.buffer[n - 1].leftMetrics.straightness,
+        avgStraightness: 0,
       },
       right: {
         avgSpeed: rightSpeedSum / n,
+        avgReachTime: 0,
         maxSpeed: rightSpeedMax,
         avgJerk: rightJerkSum / n,
         romRange: this.rightMaxROM - this.rightMinROM,
         currentROM: this.buffer[n - 1].rightMetrics.rom,
-        currentStraightness: this.buffer[n - 1].rightMetrics.straightness,
+        avgStraightness: 0,
       },
       avgLNI: lniSum / n,
       currentLNI: this.buffer[n - 1].lniScore,
@@ -351,8 +333,6 @@ export class KinematicsBuffer {
 
   reset() {
     this.buffer = [];
-    this.leftPathLength = 0;
-    this.rightPathLength = 0;
     this.leftMinROM = Infinity;
     this.leftMaxROM = -Infinity;
     this.rightMinROM = Infinity;

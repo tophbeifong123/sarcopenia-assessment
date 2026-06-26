@@ -5,11 +5,12 @@ import LNIGauge from "./LNIGauge";
 
 interface ArmStats {
   avgSpeed: number;
+  avgReachTime: number;
   maxSpeed: number;
   avgJerk: number;
   romRange: number;
   currentROM: number;
-  currentStraightness: number;
+  avgStraightness: number;
 }
 
 interface AggregatedStats {
@@ -112,10 +113,10 @@ export default function MetricsPanel({ stats, hits }: MetricsPanelProps) {
       {/* Metrics Grid */}
       <div className="space-y-0">
         <MetricRow
-          label="Avg Speed"
-          leftVal={stats.left.avgSpeed.toFixed(1)}
-          rightVal={stats.right.avgSpeed.toFixed(1)}
-          unit="norm/s"
+          label="Reach Time Avg"
+          leftVal={(stats.left.avgReachTime / 1000).toFixed(2)}
+          rightVal={(stats.right.avgReachTime / 1000).toFixed(2)}
+          unit="s"
         />
         <MetricRow
           label="Max Speed"
@@ -143,8 +144,8 @@ export default function MetricsPanel({ stats, hits }: MetricsPanelProps) {
         />
         <MetricRow
           label="Straightness"
-          leftVal={(stats.left.currentStraightness * 100).toFixed(0)}
-          rightVal={(stats.right.currentStraightness * 100).toFixed(0)}
+          leftVal={(stats.left.avgStraightness * 100).toFixed(0)}
+          rightVal={(stats.right.avgStraightness * 100).toFixed(0)}
           unit="%"
         />
       </div>

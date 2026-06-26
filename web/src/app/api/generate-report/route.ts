@@ -83,25 +83,37 @@ function buildGamePrompt(data: any): string {
   const left = data.left || {};
   const right = data.right || {};
 
-  const fmt = (s: any) =>
-    [
-      `  - Reaches: ${s.reaches ?? 0}`,
-      `  - Avg reach time: ${((s.avgReachTime ?? 0) / 1000).toFixed(2)}s`,
-      `  - Min/Max reach time: ${((s.minReachTime ?? 0) / 1000).toFixed(2)}s / ${((s.maxReachTime ?? 0) / 1000).toFixed(2)}s`,
-      `  - Path straightness: ${((s.avgStraightness ?? 0) * 100).toFixed(0)}%`,
-      `  - Movement jerk (lower = smoother): ${(s.avgJerk ?? 0).toFixed(1)}`,
+  const totalReaches = Math.max(Number(data.totalReaches) || 0, 1);
+  const fmt = (s: any) => {
+    const reaches = s.reaches ?? 0;
+    const usagePct = ((reaches / totalReaches) * 100).toFixed(0);
+    return [
+      `  - จำนวนครั้งที่ใช้แขนนี้แตะเป้า (usage): ${reaches} ครั้ง (${usagePct}% ของทั้งหมด)`,
+      `  - เวลาเอื้อมเฉลี่ย (เร็ว = น้อยกว่า): ${((s.avgReachTime ?? 0) / 1000).toFixed(2)} วินาที`,
+      `  - เวลาเอื้อม ต่ำสุด/สูงสุด: ${((s.minReachTime ?? 0) / 1000).toFixed(2)}s / ${((s.maxReachTime ?? 0) / 1000).toFixed(2)}s`,
+      `  - ความตรงของเส้นทาง (สูง = ตรง/ควบคุมดี): ${((s.avgStraightness ?? 0) * 100).toFixed(0)}%`,
+      `  - ความสั่นของการเคลื่อนไหว jerk (ต่ำ = นุ่มนวลกว่า): ${(s.avgJerk ?? 0).toFixed(1)}`,
     ].join("\n");
+  };
+
+  // Describe the one-sided edge case so the model interprets LNI correctly.
+  const oneSided =
+    (left.reaches ?? 0) === 0 || (right.reaches ?? 0) === 0
+      ? "\n- หมายเหตุสำคัญ: ผู้ทดสอบใช้แขนเพียงข้างเดียวในการแตะเป้าตลอดการทดสอบ ซึ่งเป็นสัญญาณพฤติกรรม Learned Non-Use ที่ชัดเจนที่สุด"
+      : "";
 
   return `คุณคือผู้ช่วยนักกายภาพบำบัด (virtual physiotherapist) ที่วิเคราะห์ผลการทดสอบการเอื้อมมือแตะเป้าหมายแบบ 9-Grid ของผู้สูงอายุ เพื่อคัดกรองภาวะ Learned Non-Use, ความเสี่ยงกล้ามเนื้อฝ่อลีบ (Sarcopenia) และความเสี่ยงการหกล้ม
 
 ข้อมูลที่วัดได้จากเซสชันนี้ (telemetry จริงจากกล้องด้วย MediaPipe Pose):
 - ระยะเวลาทดสอบ: ${durationSec} วินาที
 - จำนวนการเอื้อมแตะทั้งหมด: ${data.totalReaches} ครั้ง
-- Learned Non-Use Index (LNI): ${lniPercent}%
+- Learned Non-Use Index (LNI): ${lniPercent}%${oneSided}
 - แขนซ้าย (Left):
 ${fmt(left)}
 - แขนขวา (Right):
 ${fmt(right)}
+
+วิธีคำนวณ LNI (เพื่อให้ตีความตัวเลขถูกต้อง): LNI เป็นค่าความไม่สมมาตรระหว่างแขน 0–100% รวมจาก 4 ด้าน ได้แก่ ความต่างของเวลาเอื้อม (น้ำหนัก 30%), ความต่างของความตรงเส้นทาง (20%), ความต่างของ jerk (20%) และความต่างของจำนวนครั้งที่เลือกใช้แต่ละแขน/usage (30%) — ยิ่ง LNI สูงยิ่งไม่สมมาตรและเสี่ยงมาก โปรดวิเคราะห์โดยอ้างอิงทั้ง 4 ด้านนี้ โดยเฉพาะ usage และเวลาเอื้อม
 
 จงเขียน "รายงานคัดกรองทางคลินิก" เป็นภาษาไทย โดยใช้รูปแบบ Markdown ตามโครงสร้างนี้พอดี (ใช้ ## เป็นหัวข้อ, ใช้ - เป็นบุลเล็ต):
 
