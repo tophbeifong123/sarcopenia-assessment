@@ -28,17 +28,31 @@ interface EvaluationDashboardProps {
   reportLoading: boolean;
   onGenerateReport: () => void;
   onRestart: () => void;
+  recordedVideoUrl?: string | null;
 }
 
 const COLOR_LEFT = "#22d3ee";
 const COLOR_RIGHT = "#fb7185";
 
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipEntry {
+  color?: string;
+  fill?: string;
+  name?: string;
+  value?: number | string;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="glass-card px-3 py-2 text-xs space-y-1">
       <p className="text-slate-400 font-mono">{label}</p>
-      {payload.map((entry: any, i: number) => (
+      {payload.map((entry: TooltipEntry, i: number) => (
         <p key={i} style={{ color: entry.color || entry.fill }} className="font-semibold">
           {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(2) : entry.value}
         </p>
@@ -68,17 +82,17 @@ function StatCard({
       </h4>
       <div className="flex items-end justify-between">
         <div className="text-center flex-1">
-          <p className={`text-lg font-bold font-mono ${leftBetter ? "text-cyan-400" : "text-cyan-400/60"}`}>
+          <p className={`text-xl font-bold font-mono ${leftBetter ? "text-cyan-400" : "text-cyan-400/60"}`}>
             {leftVal.toFixed(1)}
-            <span className="text-[10px] text-slate-600 ml-1">{unit}</span>
+            <span className="text-lg text-slate-600 ml-1">{unit}</span>
           </p>
           <p className="text-[10px] text-slate-600 uppercase">Left</p>
         </div>
-        <div className="text-slate-700 text-xs px-2">vs</div>
+        <div className="text-slate-700 text-lg px-2">vs</div>
         <div className="text-center flex-1">
-          <p className={`text-lg font-bold font-mono ${!leftBetter ? "text-rose-400" : "text-rose-400/60"}`}>
+          <p className={`text-xl font-bold font-mono ${!leftBetter ? "text-rose-400" : "text-rose-400/60"}`}>
             {rightVal.toFixed(1)}
-            <span className="text-[10px] text-slate-600 ml-1">{unit}</span>
+            <span className="text-lg text-slate-600 ml-1">{unit}</span>
           </p>
           <p className="text-[10px] text-slate-600 uppercase">Right</p>
         </div>
@@ -107,6 +121,7 @@ export default function EvaluationDashboard({
   reportLoading,
   onGenerateReport,
   onRestart,
+  recordedVideoUrl,
 }: EvaluationDashboardProps) {
   // ── Derived chart data ──
 
@@ -181,13 +196,29 @@ export default function EvaluationDashboard({
             {results.totalReaches} reaches in {duration}s · {results.left.reaches} left · {results.right.reaches} right
           </p>
         </div>
-        <button onClick={onRestart} className="btn-secondary text-sm flex items-center gap-2" id="restart-test-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="1 4 1 10 7 10" />
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-          </svg>
-          Restart Test
-        </button>
+        <div className="flex items-center gap-3">
+          {recordedVideoUrl && (
+            <a
+              href={recordedVideoUrl}
+              download={`sarcopenia_assessment_${new Date().toISOString().slice(0, 10)}_${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.webm`}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-500/20 transition-all duration-200"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              ดาวน์โหลดวิดีโอที่บันทึก
+            </a>
+          )}
+          <button onClick={onRestart} className="btn-secondary text-sm flex items-center gap-2" id="restart-test-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
+            Restart Test
+          </button>
+        </div>
       </div>
 
       {/* ══ Hero Row: LNI + Stats ══ */}
@@ -219,7 +250,7 @@ export default function EvaluationDashboard({
           unit=""
           higherIsBetter={false}
         />
-        <div className="glass-card p-4 space-y-2 flex flex-col justify-between">
+        <div className="glass-card p-4 space-y-2 flex flex-col">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Learned Non-Use Index (LNI)
           </h4>

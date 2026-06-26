@@ -53,6 +53,8 @@ interface LiveVisionProps {
   onPostureAchieved: (achieved: boolean) => void;
   totalHits?: number;
   mirrorView?: boolean;
+  recordVideo?: boolean;
+  onRecordingComplete?: (videoUrl: string) => void;
 }
 
 /**
@@ -123,6 +125,8 @@ export default function LiveVision({
   onPostureAchieved,
   totalHits,
   mirrorView = true,
+  recordVideo = false,
+  onRecordingComplete,
 }: LiveVisionProps) {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,6 +152,82 @@ export default function LiveVision({
   const sparkleRef = useRef<{ x: number; y: number; startTime: number } | null>(null);
   const hitTriggeredRef = useRef<boolean>(false);
   const lastVideoTimeRef = useRef<number>(-1);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
+  // Manage video recording
+  useEffect(() => {
+    if (recordVideo && testState === "PLAYING") {
+      const canvas = canvasRef.current;
+      const webcamStream = webcamRef.current?.stream;
+      
+      let stream: MediaStream | null = null;
+      if (canvas && typeof canvas.captureStream === "function") {
+        stream = canvas.captureStream(30);
+      } else if (webcamStream) {
+        stream = webcamStream;
+      }
+
+      if (stream) {
+        recordedChunksRef.current = [];
+        let mediaRecorder: MediaRecorder;
+        
+        const mimeTypes = [
+          "video/webm;codecs=vp9",
+          "video/webm;codecs=vp8",
+          "video/webm",
+          "video/mp4"
+        ];
+        let selectedMimeType = "";
+        for (const type of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type;
+            break;
+          }
+        }
+        
+        try {
+          const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
+          mediaRecorder = new MediaRecorder(stream, options);
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunksRef.current.push(event.data);
+            }
+          };
+          
+          mediaRecorder.onstop = () => {
+            if (recordedChunksRef.current.length > 0) {
+              const blob = new Blob(recordedChunksRef.current, {
+                type: selectedMimeType || "video/webm"
+              });
+              const url = URL.createObjectURL(blob);
+              if (onRecordingComplete) {
+                onRecordingComplete(url);
+              }
+            }
+          };
+          
+          mediaRecorderRef.current = mediaRecorder;
+          mediaRecorder.start(1000); // 1-second chunks
+        } catch (err) {
+          console.error("Failed to start MediaRecorder:", err);
+        }
+      }
+    } else {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [testState, recordVideo, onRecordingComplete]);
 
   useEffect(() => {
     testStateRef.current = testState;
@@ -208,10 +288,22 @@ export default function LiveVision({
           if (!ctx) return;
 
           const landmarks = results.poseLandmarks;
+          const isRecording = recordVideo && testStateRef.current === "PLAYING";
 
           // Reset any prior transform and clear the full bitmap.
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          const videoEl = webcamRef.current?.video;
+          const vW = videoEl?.videoWidth || videoSizeRef.current.width;
+          const vH = videoEl?.videoHeight || videoSizeRef.current.height;
+          const fit = getCoverFit(canvas.width, canvas.height, vW, vH);
+
+          // Draw the video frame directly onto the canvas if recording is active
+          if (isRecording && videoEl) {
+            ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
+            ctx.drawImage(videoEl, 0, 0, vW, vH);
+          }
 
           if (landmarks && landmarks.length >= 33) {
             const timestamp = performance.now();
@@ -221,15 +313,10 @@ export default function LiveVision({
 
             const frame = kinematicsBuffer.current.push(correctedLandmarks, timestamp);
 
-            // Map normalized landmark space onto the SAME object-fit:cover crop
-            // the browser applied to the <video>. We read the video element's
-            // live intrinsic size and rendered box so the skeleton/grid line up
-            // exactly, regardless of any box vs. camera aspect-ratio mismatch.
-            const videoEl = webcamRef.current?.video;
-            const vW = videoEl?.videoWidth || videoSizeRef.current.width;
-            const vH = videoEl?.videoHeight || videoSizeRef.current.height;
-            const fit = getCoverFit(canvas.width, canvas.height, vW, vH);
-            ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
+            // Apply scaling transform if not already done for the video
+            if (!isRecording) {
+              ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
+            }
 
             // Starting posture verification
             if (testStateRef.current === "STARTING_POSTURE" || testStateRef.current === "COUNTDOWN") {
@@ -341,8 +428,14 @@ export default function LiveVision({
               onFrame(frame);
             }
           } else {
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // If landmarks are missing but we are recording, we still need to draw the video onto the canvas
+            // so we don't have blank spaces in the recorded canvas stream.
+            if (isRecording && videoEl) {
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+            } else {
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
           }
         });
 
@@ -490,8 +583,14 @@ export default function LiveVision({
 
       {/* Top-left status */}
       {cameraReady && isRunning && !loading && (
-        <div className="absolute top-4 left-4 z-10">
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
           <span className="status-live">Live Analysis</span>
+          {recordVideo && testState === "PLAYING" && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+              REC
+            </span>
+          )}
         </div>
       )}
 
