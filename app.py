@@ -17,6 +17,8 @@ from styles import DASHBOARD_CSS
 from ui_components import get_kinematics_card_html, get_report_card_html
 from video_processor import ProcessorConfig, VideoProcessor
 
+gemini_key = os.environ.get("GEMINI_API_KEY", "")
+
 
 def get_preview_frame(video_path, skip_seconds, left_margin, right_margin, top_margin, bottom_margin, mirror_view):
     cap = cv2.VideoCapture(video_path)
@@ -136,7 +138,6 @@ mirror_view = st.sidebar.checkbox("กลับด้านวิดีโอ (M
 save_video = st.sidebar.checkbox("Save Annotated Video for Download", value=True)
 
 st.sidebar.markdown("---")
-gemini_key = st.sidebar.text_input("Google Gemini API Key (Optional)", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
 st.sidebar.subheader("📐 Grid Bounds Alignment")
 grid_preset = st.sidebar.selectbox("Grid Layout Preset", ["Fit Video Frame (Default)", "Center 4:3 (Pillarbox)", "Custom Margins"])
 
