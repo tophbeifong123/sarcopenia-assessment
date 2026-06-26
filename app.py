@@ -102,6 +102,8 @@ _DEFAULTS = {
     "last_status_text": "",
     "last_rec_status_html": None,
     "last_active_cell_html": None,
+    "ai_report": None,
+    "analysis_summary": None,
 }
 for key, default in _DEFAULTS.items():
     if key not in st.session_state:
@@ -134,6 +136,7 @@ mirror_view = st.sidebar.checkbox("กลับด้านวิดีโอ (M
 save_video = st.sidebar.checkbox("Save Annotated Video for Download", value=True)
 
 st.sidebar.markdown("---")
+gemini_key = st.sidebar.text_input("Google Gemini API Key (Optional)", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
 st.sidebar.subheader("📐 Grid Bounds Alignment")
 grid_preset = st.sidebar.selectbox("Grid Layout Preset", ["Fit Video Frame (Default)", "Center 4:3 (Pillarbox)", "Custom Margins"])
 
@@ -226,6 +229,230 @@ def _filter_and_format_logs(lines, filter_type):
             colored = f"<span style='color: #94A3B8;'>{line}</span>"
         filtered_lines.append(colored)
     return filtered_lines
+
+
+def generate_game_clinical_report(summary: dict) -> str:
+    lni_score = summary.get("lni_score", 0.0)
+    lni_percent = f"{lni_score * 100:.1f}"
+    
+    if lni_score < 0.15:
+        severity = "Minimal Asymmetry (ความไม่สมมาตรน้อยมาก)"
+        risk_level = "LOW"
+        emoji = "✅"
+        recommendation = "การทำงานของแขนทั้งสองข้างมีความสมมาตรดีเยี่ยม ผู้ทดสอบแสดงความสมดุลของการประสานสัมพันธ์ ความเร็ว และเส้นทางการเคลื่อนไหวที่เป็นเส้นตรงระหว่างทั้งสองฝั่ง ไม่พบข้อบ่งชี้ทางคลินิกของภาวะ Learned Non-Use แนะนำให้ทำกิจกรรมทางกายที่ใช้ร่างกายสองฝั่งตามปกติเพื่อรักษาสมรรถนะ"
+    elif lni_score < 0.35:
+        severity = "Mild Asymmetry / Compensatory Behavior (ความไม่สมมาตรเล็กน้อย / พฤติกรรมชดเชย)"
+        risk_level = "MODERATE-LOW"
+        emoji = "⚠️"
+        recommendation = "พบความไม่สมมาตรของการเคลื่อนไหวเล็กน้อย ผู้ทดสอบมีอาการลังเลหรือใช้ระยะเวลาเอื้อมนานขึ้นเล็กน้อยในข้างที่ใช้งานน้อยกว่า ซึ่งอาจเป็นตัวแทนของรูปแบบการเคลื่อนไหวเพื่อชดเชยในระยะเริ่มต้น แนะนำให้เน้นการทำกิจกรรมที่ใช้สองมือร่วมกัน โดยพยายามใช้แขนข้างที่ไม่ถนัด/ใช้งานน้อยก่อนในการทำภารกิจประจำวัน"
+    elif lni_score < 0.55:
+        severity = "Moderate Learned Non-Use (ภาวะ Learned Non-Use ระดับปานกลาง)"
+        risk_level = "MODERATE"
+        emoji = "🔶"
+        recommendation = "ตรวจพบรูปแบบภาวะ Learned Non-Use ระดับปานกลาง มีการเลือกใช้แขนข้างเด่นอย่างชัดเจน ทั้งในด้านความเร็วการเอื้อม ความตรงของเส้นทาง และการเลือกข้างแขนเพื่อเอื้อมเป้าหมาย แนะนำให้พิจารณาใช้หลักการฝึกกระตุ้นการใช้งานแขนข้างที่อ่อนแรง (Constraint-Induced Movement Therapy - CIMT) โดยจำกัดการใช้งานแขนข้างเด่นในช่วงสั้นๆ ระหว่างทำกิจกรรมในชีวิตประจำวัน (เช่น การรับประทานอาหาร การเปิดประตู) เพื่อบังคับให้มีการใช้งานข้างที่อ่อนแรง"
+    else:
+        severity = "Significant Learned Non-Use & High Fall Risk (ภาวะ Learned Non-Use รุนแรงและความเสี่ยงหกล้มสูง)"
+        risk_level = "HIGH"
+        emoji = "🔴"
+        recommendation = "พบภาวะ Learned Non-Use ระดับรุนแรง ผู้ทดสอบพึ่งพาแขนข้างเด่นเกือบทั้งหมด ในขณะที่แขนข้างที่ใช้งานน้อยมีความเร็วต่ำอย่างมาก เส้นทางการเคลื่อนไหวอ้อมหรือสั่น (jerk สูง) ความแตกต่างของการใช้กำลังนี้ส่งผลต่อการทรงตัวแบบสองฝั่งและปฏิกิริยาการป้องกันตัวเมื่อหกล้ม ทำให้มีความเสี่ยงหกล้มสูงขึ้นอย่างมาก แนะนำให้ส่งต่อเพื่อรับการประเมินทางกิจกรรมบำบัดหรือกายภาพบำบัดอย่างเร่งด่วน"
+
+    left_reaches = summary.get("left_reaches", 0)
+    right_reaches = summary.get("right_reaches", 0)
+    total_reaches = max(1, summary.get("total_hits", 1))
+    
+    if left_reaches < right_reaches:
+        less_active = "Left"
+        more_active = "Right"
+    elif left_reaches > right_reaches:
+        less_active = "Right"
+        more_active = "Left"
+    else:
+        if summary.get("left_avg_reach_time", 0.0) > summary.get("right_avg_reach_time", 0.0):
+            less_active = "Left"
+            more_active = "Right"
+        else:
+            less_active = "Right"
+            more_active = "Left"
+
+    less_stats = {
+        "reaches": left_reaches if less_active == "Left" else right_reaches,
+        "avg_reach_time": summary.get("left_avg_reach_time", 0.0) if less_active == "Left" else summary.get("right_avg_reach_time", 0.0),
+        "min_reach_time": summary.get("left_min_reach_time", 0.0) if less_active == "Left" else summary.get("right_min_reach_time", 0.0),
+        "max_reach_time": summary.get("left_max_reach_time", 0.0) if less_active == "Left" else summary.get("right_max_reach_time", 0.0),
+        "avg_straightness": summary.get("left_avg_straightness", 0.0) if less_active == "Left" else summary.get("right_avg_straightness", 0.0),
+        "avg_jerk": summary.get("left_avg_jerk", 0.0) if less_active == "Left" else summary.get("right_avg_jerk", 0.0),
+    }
+    
+    more_stats = {
+        "reaches": right_reaches if less_active == "Left" else left_reaches,
+        "avg_reach_time": summary.get("right_avg_reach_time", 0.0) if less_active == "Left" else summary.get("left_avg_reach_time", 0.0),
+        "min_reach_time": summary.get("right_min_reach_time", 0.0) if less_active == "Left" else summary.get("left_min_reach_time", 0.0),
+        "max_reach_time": summary.get("right_max_reach_time", 0.0) if less_active == "Left" else summary.get("left_max_reach_time", 0.0),
+        "avg_straightness": summary.get("right_avg_straightness", 0.0) if less_active == "Left" else summary.get("left_avg_straightness", 0.0),
+        "avg_jerk": summary.get("right_avg_jerk", 0.0) if less_active == "Left" else summary.get("left_avg_jerk", 0.0),
+    }
+
+    usage_ratio = f"{(less_stats['reaches'] / total_reaches * 100):.0f}"
+    more_usage_ratio = f"{(more_stats['reaches'] / total_reaches * 100):.0f}"
+    
+    speed_diff = f"{(((less_stats['avg_reach_time'] - more_stats['avg_reach_time']) / max(0.001, more_stats['avg_reach_time'])) * 100):.0f}" if more_stats['avg_reach_time'] > 0 else "0"
+
+    less_active_th = "แขนซ้าย" if less_active == "Left" else "แขนขวา"
+    more_active_th = "แขนซ้าย" if more_active == "Left" else "แขนขวา"
+
+    fall_risk_desc = (
+        "⚠️ **ความเสี่ยงหกล้มสูง (HIGH RISK):** ความไม่สมมาตรของการทำงานของแขนมีความสัมพันธ์อย่างสูงกับการสูญเสียการทรงตัวในการเคลื่อนไหว หากผู้ทดสอบลื่นล้ม ปฏิกิริยาการยื่นแขนเพื่อพยุงตัวในข้างที่ใช้งานน้อยอาจทำงานช้าหรือไม่มีกำลังพอ ส่งผลให้มีความเสี่ยงที่จะกระดูกหักจากแรงกระแทกได้สูง แนะนำให้แนะนำมาตรการป้องกันการหกล้มและติดตั้งราวพยุง"
+        if lni_score > 0.4 else
+        "ผู้ทดสอบแสดงปฏิกิริยาตอบสนองและการควบคุมที่สมมาตรเพียงพอ ความเสี่ยงต่อการหกล้มกะทันหันอันเนื่องมาจากการไม่ใช้งานแขนในปัจจุบันอยู่ในระดับต่ำ"
+    )
+
+    return f"""## {emoji} รายงานผลการเอื้อมมือ 9-Grid — {severity}
+
+**ระยะเวลารวมในการทดสอบ:** {summary.get('duration_sec', 0.0):.1f} วินาที
+**จำนวนการเอื้อมแตะทั้งหมด:** {summary.get('total_hits', 0)} ครั้ง
+**ระดับความเสี่ยง:** {risk_level}
+**ดัชนีการไม่ใช้งานแขนข้างที่ไม่ถนัด (LNI):** {lni_percent}%
+
+## สรุปสมรรถนะการทดสอบ
+
+**แขนข้างที่ใช้งานหลัก (More Active): {more_active_th}**
+- จำนวนการเอื้อมแตะ: {more_stats['reaches']} ครั้ง ({more_usage_ratio}% ของทั้งหมด)
+- เวลาในการเอื้อมเฉลี่ย: {(more_stats['avg_reach_time'] / 1000.0):.2f} วินาที (ต่ำสุด: {(more_stats['min_reach_time'] / 1000.0):.2f}s, สูงสุด: {(more_stats['max_reach_time'] / 1000.0):.2f}s)
+- ความตรงของเส้นทางการเคลื่อนไหว: {more_stats['avg_straightness'] * 100.0:.0f}% (ค่าสูงหมายถึงการเอื้อมเป็นเส้นตรงได้ดี)
+- ความสั่นของการเคลื่อนไหว (Jerk): {more_stats['avg_jerk']:.1f} (ค่าต่ำหมายถึงการเคลื่อนไหวที่สมูทและนิ่ง)
+
+**แขนข้างที่ใช้งานน้อย (Less Active): {less_active_th}**
+- จำนวนการเอื้อมแตะ: {less_stats['reaches']} ครั้ง ({usage_ratio}% ของทั้งหมด)
+- เวลาในการเอื้อมเฉลี่ย: {(less_stats['avg_reach_time'] / 1000.0):.2f} วินาที (ต่ำสุด: {(less_stats['min_reach_time'] / 1000.0):.2f}s, สูงสุด: {(less_stats['max_reach_time'] / 1000.0):.2f}s)
+- ความตรงของเส้นทางการเคลื่อนไหว: {less_stats['avg_straightness'] * 100.0:.0f}%
+- ความสั่นของการเคลื่อนไหว (Jerk): {less_stats['avg_jerk']:.1f}
+
+## ข้อค้นพบทางคลินิก
+
+- **ความเหลื่อมล้ำในการใช้งาน (Usage Disparity):** {less_active_th} ถูกเลือกใช้เอื้อมเพียง {usage_ratio}% ของเป้าหมายทั้งหมด แสดงถึงความพึงพอใจที่จะเลือกใช้ {more_active_th} มากกว่าอย่างชัดเจน
+- **เวลาเอื้อมที่ช้าลง (Reach Delay):** {less_active_th} ใช้เวลาในการเอื้อมช้ากว่า {more_active_th} เฉลี่ย {speed_diff}% ซึ่งบ่งชี้ถึงความล่าช้าในการวางแผนการเคลื่อนไหว (motor planning delay) หรือความอ่อนแรงของกล้ามเนื้อ
+- **ความเบี่ยงเบนของเส้นทาง (Path Deviation):** {less_active_th} มีความตรงในการเคลื่อนไหวที่ {less_stats['avg_straightness'] * 100.0:.0f}% เปรียบเทียบกับ {more_stats['avg_straightness'] * 100.0:.0f}% ของอีกข้าง สะท้อนถึงปัญหาการประสานงานของกล้ามเนื้อหรืออาการสั่น
+- **ความสั่นสะท้าน (Tremor / Spasticity):** ค่า jerk ของ {less_active_th} อยู่ที่ {less_stats['avg_jerk']:.1f} เปรียบเทียบกับ {more_stats['avg_jerk']:.1f} ของอีกฝั่ง
+
+## แผนการฟื้นฟูและเป้าหมาย
+
+1. **เป้าหมายระยะสั้น (2-4 สัปดาห์):** บังคับการใช้งานของ {less_active_th} ในภารกิจการฝึกซ้อมเป็นเวลา 15-20 นาทีต่อวัน และพยายามลดระดับคะแนน LNI ให้ต่ำกว่า 40% ในการทดสอบซ้ำ
+2. **การประสานงานสองมือ:** ฝึกทำกิจกรรมที่ต้องการการทรงตัวและจับพยุงด้วย {more_active_th} และการควบคุมหยิบจับด้วย {less_active_th}
+3. **การออกกำลังกายที่บ้าน:** ทำกายภาพยืดเหยียดช่วงไหล่ร่วมกับการเอื้อมแตะเป้าหมาย (เช่น การติดกระดาษสีสติกเกอร์เป็นจุดตารางบนกำแพงแล้วเอื้อมแตะทีละสี)
+
+## ประเมินความเสี่ยงต่อการหกล้ม
+
+{fall_risk_desc}
+
+---
+*รายงานนี้สร้างด้วยระบบคัดกรองอัตโนมัติจากการประเมินทางจลนศาสตร์ (Kinematics) เพื่อวัตถุประสงค์ในการคัดกรองเบื้องต้นเท่านั้น ไม่ใช่การวินิจฉัยทางการแพทย์ และไม่ทดแทนการประเมินวิเคราะห์โดยบุคลากรทางการแพทย์*"""
+
+
+def build_game_prompt_py(summary: dict) -> str:
+    lni_percent = f"{summary.get('lni_score', 0.0) * 100:.1f}"
+    duration_sec = f"{summary.get('duration_sec', 0.0):.0f}"
+    total_hits = max(1, summary.get("total_hits", 1))
+    
+    left_usage_pct = f"{(summary.get('left_reaches', 0) / total_hits * 100):.0f}"
+    right_usage_pct = f"{(summary.get('right_reaches', 0) / total_hits * 100):.0f}"
+    
+    left_fmt = (
+        f"  - จำนวนครั้งที่ใช้แขนนี้แตะเป้า (usage): {summary.get('left_reaches', 0)} ครั้ง ({left_usage_pct}% ของทั้งหมด)\n"
+        f"  - เวลาเอื้อมเฉลี่ย (เร็ว = น้อยกว่า): {(summary.get('left_avg_reach_time', 0.0) / 1000.0):.2f} วินาที\n"
+        f"  - เวลาเอื้อม ต่ำสุด/สูงสุด: {(summary.get('left_min_reach_time', 0.0) / 1000.0):.2f}s / {(summary.get('left_max_reach_time', 0.0) / 1000.0):.2f}s\n"
+        f"  - ความตรงของเส้นทาง (สูง = ตรง/ควบคุมดี): {summary.get('left_avg_straightness', 1.0) * 100.0:.0f}%\n"
+        f"  - ความสั่นของการเคลื่อนไหว jerk (ต่ำ = นุ่มนวลกว่า): {summary.get('left_avg_jerk', 0.0):.1f}"
+    )
+    
+    right_fmt = (
+        f"  - จำนวนครั้งที่ใช้แขนนี้แตะเป้า (usage): {summary.get('right_reaches', 0)} ครั้ง ({right_usage_pct}% ของทั้งหมด)\n"
+        f"  - เวลาเอื้อมเฉลี่ย (เร็ว = น้อยกว่า): {(summary.get('right_avg_reach_time', 0.0) / 1000.0):.2f} วินาที\n"
+        f"  - เวลาเอื้อม ต่ำสุด/สูงสุด: {(summary.get('right_min_reach_time', 0.0) / 1000.0):.2f}s / {(summary.get('right_max_reach_time', 0.0) / 1000.0):.2f}s\n"
+        f"  - ความตรงของเส้นทาง (สูง = ตรง/ควบคุมดี): {summary.get('right_avg_straightness', 1.0) * 100.0:.0f}%\n"
+        f"  - ความสั่นของการเคลื่อนไหว jerk (ต่ำ = นุ่มนวลกว่า): {summary.get('right_avg_jerk', 0.0):.1f}"
+    )
+    
+    one_sided = ""
+    if summary.get('left_reaches', 0) == 0 or summary.get('right_reaches', 0) == 0:
+        one_sided = "\n- หมายเหตุสำคัญ: ผู้ทดสอบใช้แขนเพียงข้างเดียวในการแตะเป้าตลอดการทดสอบ ซึ่งเป็นสัญญาณพฤติกรรม Learned Non-Use ที่ชัดเจนที่สุด"
+        
+    return f"""คุณคือผู้ช่วยนักกายภาพบำบัด (virtual physiotherapist) ที่วิเคราะห์ผลการทดสอบการเอื้อมมือแตะเป้าหมายแบบ 9-Grid ของผู้สูงอายุ เพื่อคัดกรองภาวะ Learned Non-Use, ความเสี่ยงกล้ามเนื้อฝ่อลีบ (Sarcopenia) และความเสี่ยงการหกล้ม
+
+ข้อมูลที่วัดได้จากเซสชันนี้ (telemetry จริงจากกล้องด้วย MediaPipe Pose):
+- ระยะเวลาทดสอบ: {duration_sec} วินาที
+- จำนวนการเอื้อมแตะทั้งหมด: {summary.get('total_hits', 0)} ครั้ง
+- Learned Non-Use Index (LNI): {lni_percent}%{one_sided}
+- แขนซ้าย (Left):
+{left_fmt}
+- แขนขวา (Right):
+{right_fmt}
+
+วิธีคำนวณ LNI (เพื่อให้ตีความตัวเลขถูกต้อง): LNI เป็นค่าความไม่สมมาตรระหว่างแขน 0–100% รวมจาก 4 ด้าน ได้แก่ ความต่างของเวลาเอื้อม (น้ำหนัก 30%), ความต่างของความตรงเส้นทาง (20%), ความต่างของ jerk (20%) และความต่างของจำนวนครั้งที่เลือกใช้แต่ละแขน/usage (30%) — ยิ่ง LNI สูงยิ่งไม่สมมาตรและเสี่ยงมาก โปรดวิเคราะห์โดยอ้างอิงทั้ง 4 ด้านนี้ โดยเฉพาะ usage และเวลาเอื้อม
+
+จงเขียน "รายงานคัดกรองทางคลินิก" เป็นภาษาไทย โดยใช้รูปแบบ Markdown ตามโครงสร้างนี้พอดี (ใช้ ## เป็นหัวข้อ, ใช้ - เป็นบุลเล็ต):
+
+## (อีโมจิระดับความเสี่ยง) รายงานผลทดสอบการเอื้อมมือ 9-Grid — (ระดับความรุนแรง)
+(สรุประยะเวลา จำนวนครั้ง ระดับความเสี่ยง และ LNI)
+
+## สรุปผลการเคลื่อนไหว
+(เปรียบเทียบแขนข้างที่ใช้งานมากกับข้างที่ใช้งานน้อย ด้วยตัวเลขจริง)
+
+## ข้อค้นพบทางคลินิก
+(วิเคราะห์ความไม่สมมาตรของการใช้แขน ความเร็ว ความตรงของเส้นทาง และการสั่น/jerk)
+
+## แผนการฟื้นฟู
+(ข้อแนะนำกายภาพบำบัดที่ทำได้จริง เช่นหลักการ CIMT, การออกกำลังที่บ้าน เป็นข้อ ๆ)
+
+## ประเมินความเสี่ยงการหกล้ม
+(ประเมินความเสี่ยงการหกล้มจากความไม่สมมาตรของแขน)
+
+ข้อกำหนด:
+- อ้างอิงตัวเลขจริงจากข้อมูลข้างต้นเสมอ ห้ามแต่งตัวเลขใหม่
+- เลือกอีโมจิตามความรุนแรง: LNI < 15% ใช้ ✅, < 35% ใช้ ⚠️, < 55% ใช้ 🔶, ตั้งแต่ 55% ขึ้นไปใช้ 🔴
+- ใช้ภาษากระชับ เข้าใจง่าย เหมาะกับการอ่านโดยผู้ดูแลผู้สูงอายุ
+- ปิดท้ายด้วยบรรทัด: "*รายงานนี้สร้างด้วย AI เพื่อการคัดกรองเบื้องต้นเท่านั้น ไม่ใช่การวินิจฉัยทางการแพทย์ และไม่ทดแทนการประเมินโดยบุคลากรทางการแพทย์*"
+- ตอบเฉพาะตัวรายงาน ไม่ต้องมีคำนำหรือคำอธิบายเพิ่ม"""
+
+
+def generate_gemini_report_py(summary: dict, api_key: str) -> str:
+    import json
+    import urllib.request
+    
+    prompt = build_game_prompt_py(summary)
+    
+    model = "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": 2048,
+            "thinkingConfig": {"thinkingBudget": 0}
+        }
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    
+    with urllib.request.urlopen(req, timeout=20) as response:
+        res_body = response.read().decode("utf-8")
+        res_json = json.loads(res_body)
+        
+        candidate = res_json.get("candidates", [{}])[0]
+        finish_reason = candidate.get("finishReason")
+        if finish_reason and finish_reason != "STOP":
+            raise RuntimeError(f"Gemini response incomplete: {finish_reason}")
+            
+        parts = candidate.get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts).strip()
+        if not text:
+            raise RuntimeError("Gemini returned empty text")
+        return text
 
 
 # --- Layout Columns ---
@@ -389,6 +616,8 @@ if uploaded_file is not None:
         st.session_state.last_status_text = ""
         st.session_state.last_rec_status_html = None
         st.session_state.last_active_cell_html = None
+        st.session_state.ai_report = None
+        st.session_state.analysis_summary = None
 
         video_path = st.session_state.temp_video_path
 
@@ -513,6 +742,7 @@ if uploaded_file is not None:
 
         # --- Final summary report ---
         summary = processor.summarize()
+        st.session_state.analysis_summary = summary
         report_html = get_report_card_html(
             frame_idx=last_frame_idx,
             fps=fps,
@@ -569,6 +799,91 @@ if uploaded_file is not None:
 if st.session_state.analysis_completed:
     st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
     st.markdown(st.session_state.report_html, unsafe_allow_html=True)
+
+    summary = st.session_state.get("analysis_summary")
+    if summary:
+        st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
+        st.subheader("📊 กราฟเปรียบเทียบผลการทดสอบ (Performance Comparison Charts)")
+        
+        # 1. Bar Chart: Left vs Right Comparison
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.markdown("<b>เปรียบเทียบแขนซ้าย vs แขนขวา (Left vs Right Comparison)</b>", unsafe_allow_html=True)
+            left_jerk = summary.get("left_avg_jerk", 0.0)
+            right_jerk = summary.get("right_avg_jerk", 0.0)
+            
+            bar_df = pd.DataFrame({
+                "Metric": ["Reach Duration (s)", "Path Straightness (%)", "Smoothness Index"],
+                "Left Arm": [
+                    summary.get("left_avg_reach_time", 0.0) / 1000.0,
+                    summary.get("left_avg_straightness", 1.0) * 100.0,
+                    1.0 / (1.0 + left_jerk * 0.01) if left_jerk > 0 else 1.0
+                ],
+                "Right Arm": [
+                    summary.get("right_avg_reach_time", 0.0) / 1000.0,
+                    summary.get("right_avg_straightness", 1.0) * 100.0,
+                    1.0 / (1.0 + right_jerk * 0.01) if right_jerk > 0 else 1.0
+                ]
+            }).set_index("Metric")
+            st.bar_chart(bar_df)
+            
+        with chart_col2:
+            st.markdown("<b>ระยะเวลาการเอื้อมแตะแต่ละครั้ง (Individual Reach Times)</b>", unsafe_allow_html=True)
+            reaches_list = summary.get("reaches", [])
+            if reaches_list:
+                reaches_df = pd.DataFrame([
+                    {
+                        "Reach #": r["index"],
+                        "Time (s)": r["reachTimeMs"] / 1000.0,
+                        "Arm": "Left Arm" if r["arm"] == "left" else "Right Arm"
+                    }
+                    for r in reaches_list
+                ])
+                st.scatter_chart(reaches_df, x="Reach #", y="Time (s)", color="Arm")
+            else:
+                st.info("ไม่มีข้อมูลการเอื้อมแตะในเซสชันนี้")
+
+        # 2. AI / Rule-based Clinical Screening Report
+        st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
+        st.subheader("📋 รายงานสรุปผลคัดกรองทางคลินิก (Clinical Screening Report)")
+        
+        if st.session_state.get("ai_report") is None:
+            api_info = " (ใช้โมเดล Gemini)" if gemini_key else " (แบบอิงเกณฑ์ทางคลินิก - Rule-based)"
+            if st.button(f"📝 สร้างรายงานคัดกรอง{api_info}", key="gen_ai_report_btn", use_container_width=True):
+                with st.spinner("กำลังวิเคราะห์ผลข้อมูลจลนศาสตร์..."):
+                    try:
+                        if gemini_key:
+                            report_txt = generate_gemini_report_py(summary, gemini_key)
+                        else:
+                            report_txt = generate_game_clinical_report(summary)
+                        st.session_state.ai_report = report_txt
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"การเรียกใช้งาน AI ขัดข้อง: {e} (กำลังสลับมาสร้างรายงานแบบอิงเกณฑ์แทน...)")
+                        report_txt = generate_game_clinical_report(summary)
+                        st.session_state.ai_report = report_txt
+                        st.rerun()
+        else:
+            st.markdown(
+                f"<div style='background-color:#1E293B; border:1px solid #334155; padding:20px; border-radius:12px; margin-bottom:15px;'>"
+                f"{st.session_state.ai_report}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            
+            dl_col1, dl_col2 = st.columns([1, 3])
+            with dl_col1:
+                st.download_button(
+                    label="📥 ดาวน์โหลดรายงาน (.md)",
+                    data=st.session_state.ai_report,
+                    file_name="clinical_screening_report.md",
+                    mime="text/markdown",
+                    use_container_width=True
+                )
+            with dl_col2:
+                if st.button("🔄 สร้างรายงานใหม่ (Regenerate)", key="regen_report_btn"):
+                    st.session_state.ai_report = None
+                    st.rerun()
 
     if st.session_state.video_bytes:
         st.sidebar.download_button(

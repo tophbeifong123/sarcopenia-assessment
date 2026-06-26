@@ -18,6 +18,8 @@ from kinematics import (
     calculate_shoulder_angle,
     dist_3d_norm,
     displacement_and_path_length,
+    calculate_straightness,
+    calculate_jerk,
 )
 from pose_backend import POSE_LANDMARK, PoseEstimator, draw_pose
 
@@ -117,6 +119,7 @@ class VideoProcessor:
         self.right_current_rom = 0.0
         self.left_wrist_norm_history: list = []
         self.right_wrist_norm_history: list = []
+        self.reaches: list[dict] = []
 
     # -- public helpers ---------------------------------------------------
     def release(self) -> None:
@@ -147,6 +150,7 @@ class VideoProcessor:
         any_hit_logged: dict = {}
         trial_start_times: dict = {}
         consecutive_frames_counter = {i: {"Left": 0, "Right": 0} for i in range(1, 10)}
+        target_paths: dict = {}
 
         smoothers = {
             name: TemporalSmoother(cfg.smoothing_window)
@@ -376,6 +380,16 @@ class VideoProcessor:
             else:
                 active_targets_map = {}
 
+            # Record path points for active targets if pose exists
+            if has_pose and is_recording:
+                ref_left = l_ix if cfg.ref_point_mode == "Index Finger Tip" else l_wr
+                ref_right = r_ix if cfg.ref_point_mode == "Index Finger Tip" else r_wr
+                for cell_num, inst_id in active_targets_map.items():
+                    if inst_id not in target_paths:
+                        target_paths[inst_id] = {"Left": [], "Right": []}
+                    target_paths[inst_id]["Left"].append({"x": ref_left["x"], "y": ref_left["y"], "t": timestamp_ms})
+                    target_paths[inst_id]["Right"].append({"x": ref_right["x"], "y": ref_right["y"], "t": timestamp_ms})
+
             # --- collision detection ---
             hands_pts = {"Left": left_wrist_pt, "Right": right_wrist_pt}
             if is_recording:
@@ -406,6 +420,21 @@ class VideoProcessor:
                                     any_hit_logged[inst_id] = True
                                     trial_start = trial_start_times.get(inst_id, frame_idx / fps)
                                     reaction = (frame_idx / fps) - trial_start
+                                    
+                                    # Calculate reach metrics
+                                    path_points = target_paths.get(inst_id, {}).get(hand_side, [])
+                                    st_val = calculate_straightness(path_points)
+                                    jk_val = calculate_jerk(path_points)
+                                    
+                                    self.reaches.append({
+                                        "index": len(self.reaches) + 1,
+                                        "targetCell": cell_num,
+                                        "arm": hand_side.lower(),
+                                        "reachTimeMs": reaction * 1000.0,
+                                        "straightness": st_val,
+                                        "jerk": jk_val
+                                    })
+                                    
                                     new_logs.append(f"[Frame {frame_idx}] Target {inst_id} HIT by {hand_side.upper()} Hand")
                                     self.total_hits += 1
                                     self.reaction_times.append(reaction)
@@ -418,8 +447,6 @@ class VideoProcessor:
                                     cv2.putText(annotated, "HIT!", (x1 + 10, y1 + cell_h - 10),
                                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                                     consecutive_frames_counter[cell_num][hand_side] = 0
-                        # Note: we do NOT reset the cumulative counter to 0 immediately if they briefly step out.
-                        # It will reset when the target disappears and reappears.
 
             # --- target disappearance state machine ---
             if is_recording:
@@ -457,6 +484,21 @@ class VideoProcessor:
                                 any_hit_logged[inst_id] = True
                                 trial_start = trial_start_times.get(inst_id, frame_idx / fps)
                                 reaction = (frame_idx / fps) - trial_start
+                                
+                                # Calculate reach metrics
+                                path_points = target_paths.get(inst_id, {}).get(near_hand, [])
+                                st_val = calculate_straightness(path_points)
+                                jk_val = calculate_jerk(path_points)
+                                
+                                self.reaches.append({
+                                    "index": len(self.reaches) + 1,
+                                    "targetCell": cell_num,
+                                    "arm": near_hand.lower(),
+                                    "reachTimeMs": reaction * 1000.0,
+                                    "straightness": st_val,
+                                    "jerk": jk_val
+                                })
+                                
                                 new_logs.append(f"[Frame {frame_idx}] Target {inst_id} HIT by {near_hand.upper()} Hand")
                                 self.total_hits += 1
                                 self.reaction_times.append(reaction)
@@ -501,13 +543,10 @@ class VideoProcessor:
             else:
                 dominant_side = "left" if left_speed_sum > right_speed_sum else "right"
 
-            left_straightness = right_straightness = 0.0
-            if self.left_wrist_norm_history:
-                disp = dist_3d_norm(self.left_wrist_norm_history[-1], self.left_wrist_norm_history[0])
-                left_straightness = (disp / left_path_length * 100) if left_path_length > 0.001 else 0.0
-            if self.right_wrist_norm_history:
-                disp = dist_3d_norm(self.right_wrist_norm_history[-1], self.right_wrist_norm_history[0])
-                right_straightness = (disp / right_path_length * 100) if right_path_length > 0.001 else 0.0
+            left_done = [r for r in self.reaches if r["arm"] == "left"]
+            right_done = [r for r in self.reaches if r["arm"] == "right"]
+            left_straightness = float(np.mean([r["straightness"] for r in left_done])) * 100.0 if left_done else 0.0
+            right_straightness = float(np.mean([r["straightness"] for r in right_done])) * 100.0 if right_done else 0.0
 
             # --- CSV history row ---
             left_hand_x = (left_wrist_pt[0] - x_start) / grid_w * 100 if left_wrist_pt is not None else None
@@ -577,52 +616,105 @@ class VideoProcessor:
 
     # -- final summary ----------------------------------------------------
     def summarize(self) -> dict:
-        left_disp, left_path = displacement_and_path_length(self.left_wrist_norm_history)
-        left_straightness = (left_disp / left_path if left_path > 0.001 else 1.0) * 100
-        right_disp, right_path = displacement_and_path_length(self.right_wrist_norm_history)
-        right_straightness = (right_disp / right_path if right_path > 0.001 else 1.0) * 100
+        left_reaches = sum(1 for r in self.reaches if r["arm"] == "left")
+        right_reaches = sum(1 for r in self.reaches if r["arm"] == "right")
+        total_hits = len(self.reaches)
 
-        left_speed_sum = sum(self.left_speeds)
-        right_speed_sum = sum(self.right_speeds)
-        dominant_side_en = "LEFT" if left_speed_sum > right_speed_sum else "RIGHT"
+        left_avg_reach_time = float(np.mean([r["reachTimeMs"] for r in self.reaches if r["arm"] == "left"])) if left_reaches > 0 else 0.0
+        right_avg_reach_time = float(np.mean([r["reachTimeMs"] for r in self.reaches if r["arm"] == "right"])) if right_reaches > 0 else 0.0
+        left_min_reach_time = float(np.min([r["reachTimeMs"] for r in self.reaches if r["arm"] == "left"])) if left_reaches > 0 else 0.0
+        right_min_reach_time = float(np.min([r["reachTimeMs"] for r in self.reaches if r["arm"] == "right"])) if right_reaches > 0 else 0.0
+        left_max_reach_time = float(np.max([r["reachTimeMs"] for r in self.reaches if r["arm"] == "left"])) if left_reaches > 0 else 0.0
+        right_max_reach_time = float(np.max([r["reachTimeMs"] for r in self.reaches if r["arm"] == "right"])) if right_reaches > 0 else 0.0
+
+        left_avg_straightness = float(np.mean([r["straightness"] for r in self.reaches if r["arm"] == "left"])) if left_reaches > 0 else 1.0
+        right_avg_straightness = float(np.mean([r["straightness"] for r in self.reaches if r["arm"] == "right"])) if right_reaches > 0 else 1.0
+
+        left_avg_jerk = float(np.mean([r["jerk"] for r in self.reaches if r["arm"] == "left"])) if left_reaches > 0 else 0.0
+        right_avg_jerk = float(np.mean([r["jerk"] for r in self.reaches if r["arm"] == "right"])) if right_reaches > 0 else 0.0
+
+        # Dominant side based on usage frequency, fallback to avg speed
+        if left_reaches != right_reaches:
+            dominant_side_en = "LEFT" if left_reaches > right_reaches else "RIGHT"
+        else:
+            left_speed_sum = sum(self.left_speeds)
+            right_speed_sum = sum(self.right_speeds)
+            dominant_side_en = "LEFT" if left_speed_sum > right_speed_sum else "RIGHT"
 
         left_rom_range = self.left_rom_max - self.left_rom_min if self.left_rom_max != float("-inf") else 0.0
         right_rom_range = self.right_rom_max - self.right_rom_min if self.right_rom_max != float("-inf") else 0.0
 
-        lnu_risk, lnu_color = self._assess_learned_non_use()
+        # LNI Score calculation (4-axis: reach duration, path straightness, jerk, usage frequency)
+        lni_score = 0.0
+        if left_reaches > 0 and right_reaches > 0:
+            max_avg_time = max(left_avg_reach_time, right_avg_reach_time)
+            speed_asym = abs(left_avg_reach_time - right_avg_reach_time) / max_avg_time if max_avg_time > 0 else 0.0
+            straight_asym = abs(left_avg_straightness - right_avg_straightness)
+            total_jerk = left_avg_jerk + right_avg_jerk
+            jerk_asym = abs(left_avg_jerk - right_avg_jerk) / total_jerk if total_jerk > 0 else 0.0
+            usage_asym = abs(left_reaches - right_reaches) / total_hits if total_hits > 0 else 0.0
+
+            lni_score = speed_asym * 0.30 + straight_asym * 0.20 + jerk_asym * 0.20 + usage_asym * 0.30
+            lni_score = min(1.0, max(0.0, lni_score))
+        elif left_reaches > 0 or right_reaches > 0:
+            # One sided reaches is max usage asymmetry
+            lni_score = min(1.0, 0.30 * 1.0 + 0.45)
+
+        # Risk levels matching Next.js
+        if lni_score < 0.15:
+            lnu_risk = "Low Risk (ความเสี่ยงต่ำ - ทั้งสองข้างใช้งานสมมาตรดี)"
+            lnu_color = "#34D399"
+        elif lni_score < 0.35:
+            lnu_risk = "Mild Asymmetry (ความไม่สมมาตรเล็กน้อย - เริ่มมีความแตกต่างระหว่างสองฝั่ง)"
+            lnu_color = "#FBBF24"
+        elif lni_score < 0.55:
+            lnu_risk = "Moderate Risk (ความเสี่ยงปานกลาง - มีแนวโน้มชดเชยการใช้กำลังสองฝั่งไม่สมดุล)"
+            lnu_color = "#F59E0B"
+        else:
+            lnu_risk = "High Risk (ความเสี่ยงสูง - ตรวจพบภาวะฝืนไม่ใช้งานแขนข้างที่อ่อนแรงชัดเจน)"
+            lnu_color = "#EF4444"
+
+        # Duration
+        duration_sec = self.cap.get(cv2.CAP_PROP_FRAME_COUNT) / self.fps if self.fps > 0 else 0.0
+        if duration_sec <= 0:
+            duration_sec = (self.total_frames / self.fps) if self.fps > 0 else 0.0
 
         return {
-            "total_hits": self.total_hits,
-            "left_hits": self.left_hits_count,
-            "right_hits": self.right_hits_count,
+            "total_hits": total_hits,
+            "left_reaches": left_reaches,
+            "right_reaches": right_reaches,
+            "left_hits": left_reaches,
+            "right_hits": right_reaches,
+            "duration_sec": duration_sec,
+            "duration_ms": duration_sec * 1000.0,
             "dominant_side_en": dominant_side_en,
+            
+            "left_avg_reach_time": left_avg_reach_time,
+            "right_avg_reach_time": right_avg_reach_time,
+            "left_min_reach_time": left_min_reach_time,
+            "right_min_reach_time": right_min_reach_time,
+            "left_max_reach_time": left_max_reach_time,
+            "right_max_reach_time": right_max_reach_time,
+            
             "left_avg_speed": float(np.mean(self.left_speeds)) if self.left_speeds else 0.0,
             "right_avg_speed": float(np.mean(self.right_speeds)) if self.right_speeds else 0.0,
             "left_max_speed": float(np.max(self.left_speeds)) if self.left_speeds else 0.0,
             "right_max_speed": float(np.max(self.right_speeds)) if self.right_speeds else 0.0,
-            "left_avg_jerk": float(np.mean(self.left_jerks)) if self.left_jerks else 0.0,
-            "right_avg_jerk": float(np.mean(self.right_jerks)) if self.right_jerks else 0.0,
+            
+            "left_avg_jerk": left_avg_jerk,
+            "right_avg_jerk": right_avg_jerk,
             "left_rom_range": left_rom_range,
             "right_rom_range": right_rom_range,
             "left_current_rom": self.left_current_rom,
             "right_current_rom": self.right_current_rom,
-            "left_straightness": left_straightness,
-            "right_straightness": right_straightness,
+            
+            "left_avg_straightness": left_avg_straightness,
+            "right_avg_straightness": right_avg_straightness,
+            "left_straightness": left_avg_straightness * 100.0,
+            "right_straightness": right_avg_straightness * 100.0,
+            
+            "lni_score": lni_score,
             "lnu_risk": lnu_risk,
             "lnu_color": lnu_color,
+            "reaches": self.reaches,
         }
-
-    def _assess_learned_non_use(self) -> tuple[str, str]:
-        lnu_risk = "Low (\u0e04\u0e27\u0e32\u0e21\u0e40\u0e2a\u0e35\u0e48\u0e22\u0e07\u0e15\u0e48\u0e33)"
-        lnu_color = "#1FD1C8"
-        if self.target_instance_counter > 2:
-            left_ratio = self.left_hits_count / max(1, self.total_hits)
-            right_ratio = self.right_hits_count / max(1, self.total_hits)
-            if (right_ratio > 0.8 and self.left_hits_count <= 1 and self.max_left_angle < 45.0) or \
-               (left_ratio > 0.8 and self.right_hits_count <= 1 and self.max_right_angle < 45.0):
-                lnu_risk = "High (\u0e04\u0e27\u0e32\u0e21\u0e40\u0e2a\u0e35\u0e48\u0e22\u0e07\u0e2a\u0e39\u0e07 - \u0e15\u0e23\u0e27\u0e08\u0e1e\u0e1a\u0e20\u0e32\u0e27\u0e30\u0e1d\u0e37\u0e19\u0e44\u0e21\u0e48\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07\u0e17\u0e35\u0e48\u0e2d\u0e48\u0e2d\u0e19\u0e41\u0e23\u0e07)"
-                lnu_color = "#EF4444"
-            elif (right_ratio > 0.65 and self.left_hits_count <= 2) or (left_ratio > 0.65 and self.right_hits_count <= 2):
-                lnu_risk = "Moderate (\u0e04\u0e27\u0e32\u0e21\u0e40\u0e2a\u0e35\u0e48\u0e22\u0e07\u0e1b\u0e32\u0e19\u0e01\u0e25\u0e32\u0e07 - \u0e21\u0e35\u0e41\u0e19\u0e27\u0e42\u0e19\u0e49\u0e21\u0e0a\u0e14\u0e40\u0e0a\u0e22\u0e01\u0e32\u0e23\u0e43\u0e0a\u0e49\u0e01\u0e33\u0e25\u0e31\u0e07\u0e2a\u0e2d\u0e07\u0e1d\u0e31\u0e48\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e21\u0e14\u0e38\u0e25)"
-                lnu_color = "#F59E0B"
-        return lnu_risk, lnu_color

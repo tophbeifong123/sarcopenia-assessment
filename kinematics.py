@@ -77,3 +77,76 @@ def straightness_pct(history: Sequence[Point3D]) -> float:
     if path_length <= 0.001:
         return 0.0
     return displacement / path_length * 100.0
+
+
+def calculate_straightness(path: list[dict]) -> float:
+    """Path straightness: start-to-end displacement divided by total path length."""
+    if len(path) < 2:
+        return 1.0
+
+    start = path[0]
+    end = path[-1]
+    
+    dx = end["x"] - start["x"]
+    dy = end["y"] - start["y"]
+    displacement = (dx * dx + dy * dy) ** 0.5
+
+    path_length = 0.0
+    for i in range(1, len(path)):
+        p1 = path[i - 1]
+        p2 = path[i]
+        p_dx = p2["x"] - p1["x"]
+        p_dy = p2["y"] - p1["y"]
+        path_length += (p_dx * p_dx + p_dy * p_dy) ** 0.5
+
+    if path_length < 0.001:
+        return 1.0
+        
+    return min(1.0, displacement / path_length)
+
+
+def calculate_jerk(path: list[dict]) -> float:
+    """Average jerk magnitude over a path of points with 'x', 'y' and 't' (ms) keys.
+    
+    Matches the JS implementation in game-engine.ts.
+    """
+    if len(path) < 4:
+        return 0.0
+
+    # Velocities
+    vel = []
+    for i in range(1, len(path)):
+        dt = (path[i]["t"] - path[i - 1]["t"]) / 1000.0
+        if dt <= 0:
+            continue
+        vel.append({
+            "vx": (path[i]["x"] - path[i - 1]["x"]) / dt,
+            "vy": (path[i]["y"] - path[i - 1]["y"]) / dt,
+            "t": path[i]["t"]
+        })
+
+    # Accelerations
+    acc = []
+    for i in range(1, len(vel)):
+        dt = (vel[i]["t"] - vel[i - 1]["t"]) / 1000.0
+        if dt <= 0:
+            continue
+        acc.append({
+            "ax": (vel[i]["vx"] - vel[i - 1]["vx"]) / dt,
+            "ay": (vel[i]["vy"] - vel[i - 1]["vy"]) / dt,
+            "t": vel[i]["t"]
+        })
+
+    # Jerk
+    total_jerk = 0.0
+    count = 0
+    for i in range(1, len(acc)):
+        dt = (acc[i]["t"] - acc[i - 1]["t"]) / 1000.0
+        if dt <= 0:
+            continue
+        jx = (acc[i]["ax"] - acc[i - 1]["ax"]) / dt
+        jy = (acc[i]["ay"] - acc[i - 1]["ay"]) / dt
+        total_jerk += (jx * jx + jy * jy) ** 0.5
+        count += 1
+
+    return total_jerk / count if count > 0 else 0.0
