@@ -99,7 +99,7 @@ export default function MetricsPanel({ stats, hits }: MetricsPanelProps) {
 
       {/* Hits Gauge — hero metric */}
       <div className="flex justify-center py-2">
-        <LNIGauge hits={hits} misses={0} label="Target Hits" />
+        <LNIGauge hits={hits} label="Target Hits" />
       </div>
 
       {/* Dominant side */}
@@ -115,19 +115,19 @@ export default function MetricsPanel({ stats, hits }: MetricsPanelProps) {
           label="Avg Speed"
           leftVal={stats.left.avgSpeed.toFixed(1)}
           rightVal={stats.right.avgSpeed.toFixed(1)}
-          unit="px/s"
+          unit="norm/s"
         />
         <MetricRow
           label="Max Speed"
           leftVal={stats.left.maxSpeed.toFixed(1)}
           rightVal={stats.right.maxSpeed.toFixed(1)}
-          unit="px/s"
+          unit="norm/s"
         />
         <MetricRow
           label="Avg Jerk"
           leftVal={stats.left.avgJerk.toFixed(1)}
           rightVal={stats.right.avgJerk.toFixed(1)}
-          unit="px/s³"
+          unit="norm/s³"
         />
         <MetricRow
           label="ROM Range"

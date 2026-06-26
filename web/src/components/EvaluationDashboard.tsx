@@ -179,7 +179,7 @@ export default function EvaluationDashboard({
       {/* ══ Hero Row: LNI + Stats ══ */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="glass-card-glow p-5 flex flex-col items-center justify-center">
-          <LNIGauge hits={results.totalReaches} misses={0} label="Target Hits" />
+          <LNIGauge hits={results.totalReaches} label="Target Hits" />
           <p className="text-xs text-slate-500 mt-3 text-center">
             Dominant: <span className="text-indigo-400 font-semibold">{moreActive} Arm</span>
           </p>
@@ -280,14 +280,14 @@ export default function EvaluationDashboard({
         </div>
       </div>
 
-      {/* ══ AI Report ══ */}
+      {/* ══ Clinical Report ══ */}
       <div className="glass-card-glow p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-              🤖 Virtual Physio Report
+              Clinical Screening Report
             </h3>
-            <p className="text-xs text-slate-600 mt-0.5">AI-powered clinical analysis</p>
+            <p className="text-xs text-slate-600 mt-0.5">Automated rule-based kinematic analysis</p>
           </div>
           {!report && (
             <button
@@ -330,7 +330,7 @@ export default function EvaluationDashboard({
 
         {!report && !reportLoading && (
           <p className="text-sm text-slate-600 text-center py-4">
-            Click <span className="text-indigo-400 font-medium">&quot;Generate Clinical Report&quot;</span> for AI analysis
+            Click <span className="text-indigo-400 font-medium">&quot;Generate Clinical Report&quot;</span> for the kinematic analysis
           </p>
         )}
       </div>

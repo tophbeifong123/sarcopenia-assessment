@@ -4,48 +4,57 @@ import React from "react";
 
 interface LNIGaugeProps {
   hits: number;
-  misses: number;
+  /** Number of completed reaches that fills the ring (default 30). */
+  target?: number;
   label?: string;
 }
 
-export default function LNIGauge({ hits, misses, label = "Total Hits" }: LNIGaugeProps) {
-  const total = hits + misses;
-  const accuracy = total > 0 ? hits / total : 0;
-  
+/**
+ * Honest activity gauge for the 9-grid reaching test.
+ *
+ * The ring fills toward a target number of completed reaches and the centre
+ * shows the raw hit count. We intentionally do NOT display an "accuracy %"
+ * here: the game only records successful target touches, so there is no miss
+ * count to compute a meaningful accuracy from. The tiers below reflect HOW
+ * MANY targets were reached, not a hit/miss ratio.
+ */
+export default function LNIGauge({ hits, target = 30, label = "Target Hits" }: LNIGaugeProps) {
+  const safeTarget = Math.max(1, target);
+  const progress = Math.min(1, hits / safeTarget);
+
   const radius = 48;
   const circumference = 2 * Math.PI * radius;
-  // Circular arc matches accuracy ratio (0-1)
-  const offset = circumference - accuracy * circumference;
+  const offset = circumference - progress * circumference;
 
   let strokeColor: string;
   let glowColor: string;
   let rating: string;
   let ratingColor: string;
 
-  if (total === 0) {
+  if (hits === 0) {
     strokeColor = "#64748b"; // gray
     glowColor = "rgba(100, 116, 139, 0.1)";
-    rating = "No Attempts";
+    rating = "No Reaches";
     ratingColor = "text-slate-400";
-  } else if (accuracy >= 0.85) {
+  } else if (progress >= 0.85) {
     strokeColor = "#34d399"; // green
     glowColor = "rgba(52, 211, 153, 0.3)";
-    rating = "Excellent";
+    rating = "Very Active";
     ratingColor = "text-emerald-400";
-  } else if (accuracy >= 0.70) {
+  } else if (progress >= 0.55) {
     strokeColor = "#fbbf24"; // amber
     glowColor = "rgba(251, 191, 36, 0.3)";
-    rating = "Good";
+    rating = "Active";
     ratingColor = "text-amber-400";
-  } else if (accuracy >= 0.50) {
+  } else if (progress >= 0.30) {
     strokeColor = "#fb923c"; // orange
     glowColor = "rgba(251, 146, 60, 0.3)";
-    rating = "Fair";
+    rating = "Limited";
     ratingColor = "text-orange-400";
   } else {
     strokeColor = "#fb7185"; // rose
     glowColor = "rgba(251, 113, 133, 0.3)";
-    rating = "Poor";
+    rating = "Low Activity";
     ratingColor = "text-rose-400";
   }
 
@@ -85,9 +94,9 @@ export default function LNIGauge({ hits, misses, label = "Total Hits" }: LNIGaug
         <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">
           {label}
         </p>
-        {total > 0 && (
+        {hits > 0 && (
           <p className={`text-sm font-semibold ${ratingColor}`}>
-            {rating} ({Math.round(accuracy * 100)}% Acc)
+            {rating}
           </p>
         )}
       </div>

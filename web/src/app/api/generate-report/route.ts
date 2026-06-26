@@ -3,13 +3,130 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * POST /api/generate-report
  *
- * Accepts aggregated kinematic stats from the frontend sliding window
- * and returns an empathetic, clinical summary.
+ * Accepts aggregated kinematic stats from the frontend and returns an
+ * empathetic, clinical screening summary.
  *
- * In production, this would call an LLM API (e.g., Gemini, GPT-4).
- * For the hackathon MVP, we generate a detailed deterministic report
- * so the demo works without an API key, with an optional LLM path.
+ * Primary path: Google Gemini (set GEMINI_API_KEY in the environment).
+ * Fallback path: a deterministic rule-based report, so the demo still
+ * works without an API key or if the LLM call fails.
  */
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+/**
+ * Calls the Gemini REST API to produce a clinical screening report.
+ * Throws on any failure so the caller can fall back to the rule-based report.
+ */
+async function generateGeminiReport(
+  prompt: string,
+  apiKey: string
+): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 2048,
+          // Disable model "thinking" so the full token budget goes to the
+          // actual report. On thinking models (e.g. gemini-2.5-flash) the
+          // reasoning tokens otherwise consume the budget and truncate output.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Gemini API error ${res.status}: ${errText}`);
+    }
+
+    const json = await res.json();
+    const candidate = json?.candidates?.[0];
+    const text: string | undefined = candidate?.content?.parts
+      ?.map((p: any) => p?.text || "")
+      .join("")
+      .trim();
+
+    if (!text) {
+      throw new Error("Gemini returned an empty response");
+    }
+    // If the report was cut off mid-way, treat it as a failure so the caller
+    // falls back to the complete rule-based report instead of showing a stub.
+    if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+      throw new Error(
+        `Gemini response incomplete (finishReason: ${candidate.finishReason})`
+      );
+    }
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Builds a structured prompt for the 9-Grid reaching test data so Gemini
+ * produces a Thai-language clinical screening report in the markdown
+ * structure the UI already renders.
+ */
+function buildGamePrompt(data: any): string {
+  const durationSec = (data.durationMs / 1000).toFixed(0);
+  const lniPercent = (data.lniScore * 100).toFixed(1);
+  const left = data.left || {};
+  const right = data.right || {};
+
+  const fmt = (s: any) =>
+    [
+      `  - Reaches: ${s.reaches ?? 0}`,
+      `  - Avg reach time: ${((s.avgReachTime ?? 0) / 1000).toFixed(2)}s`,
+      `  - Min/Max reach time: ${((s.minReachTime ?? 0) / 1000).toFixed(2)}s / ${((s.maxReachTime ?? 0) / 1000).toFixed(2)}s`,
+      `  - Path straightness: ${((s.avgStraightness ?? 0) * 100).toFixed(0)}%`,
+      `  - Movement jerk (lower = smoother): ${(s.avgJerk ?? 0).toFixed(1)}`,
+    ].join("\n");
+
+  return `คุณคือผู้ช่วยนักกายภาพบำบัด (virtual physiotherapist) ที่วิเคราะห์ผลการทดสอบการเอื้อมมือแตะเป้าหมายแบบ 9-Grid ของผู้สูงอายุ เพื่อคัดกรองภาวะ Learned Non-Use, ความเสี่ยงกล้ามเนื้อฝ่อลีบ (Sarcopenia) และความเสี่ยงการหกล้ม
+
+ข้อมูลที่วัดได้จากเซสชันนี้ (telemetry จริงจากกล้องด้วย MediaPipe Pose):
+- ระยะเวลาทดสอบ: ${durationSec} วินาที
+- จำนวนการเอื้อมแตะทั้งหมด: ${data.totalReaches} ครั้ง
+- Learned Non-Use Index (LNI): ${lniPercent}%
+- แขนซ้าย (Left):
+${fmt(left)}
+- แขนขวา (Right):
+${fmt(right)}
+
+จงเขียน "รายงานคัดกรองทางคลินิก" เป็นภาษาไทย โดยใช้รูปแบบ Markdown ตามโครงสร้างนี้พอดี (ใช้ ## เป็นหัวข้อ, ใช้ - เป็นบุลเล็ต):
+
+## (อีโมจิระดับความเสี่ยง) รายงานผลทดสอบการเอื้อมมือ 9-Grid — (ระดับความรุนแรง)
+(สรุประยะเวลา จำนวนครั้ง ระดับความเสี่ยง และ LNI)
+
+## สรุปผลการเคลื่อนไหว
+(เปรียบเทียบแขนข้างที่ใช้งานมากกับข้างที่ใช้งานน้อย ด้วยตัวเลขจริง)
+
+## ข้อค้นพบทางคลินิก
+(วิเคราะห์ความไม่สมมาตรของการใช้แขน ความเร็ว ความตรงของเส้นทาง และการสั่น/jerk)
+
+## แผนการฟื้นฟู
+(ข้อแนะนำกายภาพบำบัดที่ทำได้จริง เช่นหลักการ CIMT, การออกกำลังที่บ้าน เป็นข้อ ๆ)
+
+## ประเมินความเสี่ยงการหกล้ม
+(ประเมินความเสี่ยงการหกล้มจากความไม่สมมาตรของแขน)
+
+ข้อกำหนด:
+- อ้างอิงตัวเลขจริงจากข้อมูลข้างต้นเสมอ ห้ามแต่งตัวเลขใหม่
+- เลือกอีโมจิตามความรุนแรง: LNI < 15% ใช้ ✅, < 35% ใช้ ⚠️, < 55% ใช้ 🔶, ตั้งแต่ 55% ขึ้นไปใช้ 🔴
+- ใช้ภาษากระชับ เข้าใจง่าย เหมาะกับการอ่านโดยผู้ดูแลผู้สูงอายุ
+- ปิดท้ายด้วยบรรทัด: "*รายงานนี้สร้างด้วย AI เพื่อการคัดกรองเบื้องต้นเท่านั้น ไม่ใช่การวินิจฉัยทางการแพทย์ และไม่ทดแทนการประเมินโดยบุคลากรทางการแพทย์*"
+- ตอบเฉพาะตัวรายงาน ไม่ต้องมีคำนำหรือคำอธิบายเพิ่ม`;
+}
 
 interface ArmStats {
   avgSpeed: number;
@@ -95,15 +212,15 @@ function generateClinicalReport(data: ReportRequest): string {
 ## Kinematic Summary
 
 **Dominant (More Active) Arm: ${moreActive}**
-- Average Speed: ${moreStats.avgSpeed.toFixed(1)} px/s (Peak: ${moreStats.maxSpeed.toFixed(1)} px/s)
+- Average Speed: ${moreStats.avgSpeed.toFixed(1)} norm/s (Peak: ${moreStats.maxSpeed.toFixed(1)} norm/s)
 - Range of Motion: ${moreStats.romRange.toFixed(0)}° dynamic range
-- Movement Jerk: ${moreStats.avgJerk.toFixed(1)} px/s³
+- Movement Jerk: ${moreStats.avgJerk.toFixed(1)} norm/s³
 - Path Straightness: ${(moreStats.currentStraightness * 100).toFixed(0)}%
 
 **Less Active Arm: ${lessActive}**
-- Average Speed: ${lessStats.avgSpeed.toFixed(1)} px/s (Peak: ${lessStats.maxSpeed.toFixed(1)} px/s)
+- Average Speed: ${lessStats.avgSpeed.toFixed(1)} norm/s (Peak: ${lessStats.maxSpeed.toFixed(1)} norm/s)
 - Range of Motion: ${lessStats.romRange.toFixed(0)}° dynamic range
-- Movement Jerk: ${lessStats.avgJerk.toFixed(1)} px/s³
+- Movement Jerk: ${lessStats.avgJerk.toFixed(1)} norm/s³
 - Path Straightness: ${(lessStats.currentStraightness * 100).toFixed(0)}%
 
 ## Key Findings
@@ -125,7 +242,7 @@ ${
 }
 
 ---
-*This report was generated by the Edge Kinematic Analysis System. It is intended for screening purposes only and does not replace a formal clinical assessment by a qualified healthcare professional.*`;
+*This report was generated by an automated rule-based kinematic analysis engine. It is intended for screening purposes only and does not replace a formal clinical assessment by a qualified healthcare professional.*`;
 }
 
 function generateGameClinicalReport(data: any): string {
@@ -217,17 +334,30 @@ ${
 }
 
 ---
-*This report is generated dynamically by the NeuroMotion AI Engine using kinematic telemetry. It is intended for clinician review as a screening tool.*`;
+*This report is generated by an automated rule-based screening engine from the recorded kinematic telemetry. It is intended for clinician review as a screening tool and does not replace a formal clinical assessment.*`;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const apiKey = process.env.GEMINI_API_KEY;
 
     // Check if it is a 9-Grid Gamified Reaching Test format
     if (body.totalReaches !== undefined && body.lniScore !== undefined) {
+      // Primary path: Gemini. Fall back to rule-based on any failure.
+      if (apiKey) {
+        try {
+          const report = await generateGeminiReport(
+            buildGamePrompt(body),
+            apiKey
+          );
+          return NextResponse.json({ report, source: "gemini" });
+        } catch (err) {
+          console.error("Gemini report failed, using rule-based fallback:", err);
+        }
+      }
       const report = generateGameClinicalReport(body);
-      return NextResponse.json({ report });
+      return NextResponse.json({ report, source: "rule-based" });
     }
 
     // Fallback to old format validation
@@ -245,7 +375,7 @@ export async function POST(request: NextRequest) {
 
     const report = generateClinicalReport(body);
 
-    return NextResponse.json({ report });
+    return NextResponse.json({ report, source: "rule-based" });
   } catch (error: any) {
     console.error("Report generation error:", error);
     return NextResponse.json(

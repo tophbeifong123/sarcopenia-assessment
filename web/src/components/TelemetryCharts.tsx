@@ -80,7 +80,7 @@ export default function TelemetryCharts({ data }: TelemetryChartsProps) {
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {/* Speed Chart */}
       <ChartCard
-        title="Arm Speed (px/s)"
+        title="Arm Speed (norm/s)"
         badge={
           latest && (
             <div className="flex items-center gap-3 text-xs font-mono">

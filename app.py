@@ -244,8 +244,8 @@ DOMINANT: {dominant_side_text} ARM
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
 <span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG SPEED</span>
 <div style="display: flex; gap: 16px;">
-<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_avg_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
-<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_avg_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_avg_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_avg_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
 </div>
 </div>
 
@@ -253,8 +253,8 @@ DOMINANT: {dominant_side_text} ARM
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
 <span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">MAX SPEED</span>
 <div style="display: flex; gap: 16px;">
-<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_max_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
-<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_max_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_max_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_max_speed:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
 </div>
 </div>
 
@@ -262,8 +262,8 @@ DOMINANT: {dominant_side_text} ARM
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
 <span style="font-size: 10px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG JERK</span>
 <div style="display: flex; gap: 16px;">
-<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_avg_jerk:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
-<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_avg_jerk:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{left_avg_jerk:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s³</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; width: 75px; text-align: right;">{right_avg_jerk:.1f}<span style="font-size: 8px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s³</span></span>
 </div>
 </div>
 
@@ -370,8 +370,6 @@ with col2:
         
     st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
     
-    st.markdown("<hr style='margin: 10px 0; border-color: #143D66;'>", unsafe_allow_html=True)
-    
     # Kinematics Dashboard Card Placeholder
     kinematics_card_placeholder = st.empty()
     
@@ -473,7 +471,7 @@ st.subheader("📊 กราฟวิเคราะห์การเคลื�
 
 chart_col1, chart_col2, chart_col3 = st.columns(3)
 with chart_col1:
-    st.markdown("<b>ความเร็วของแขน (Arm Speed - px/s)</b>", unsafe_allow_html=True)
+    st.markdown("<b>ความเร็วของแขน (Arm Speed - norm/s)</b>", unsafe_allow_html=True)
     speed_chart_placeholder = st.empty()
 with chart_col2:
     st.markdown("<b>ความราบเรียบของข้อต่อ (Movement Jerk)</b>", unsafe_allow_html=True)
@@ -488,8 +486,8 @@ def update_telemetry_charts(history_list):
     import pandas as pd
     df = pd.DataFrame(history_list)
     if 'Timestamp (sec)' in df.columns:
-        df_speed = df[['Timestamp (sec)', 'Left Arm Speed (px/s)', 'Right Arm Speed (px/s)']].set_index('Timestamp (sec)')
-        df_jerk = df[['Timestamp (sec)', 'Left Movement Jerk (px/s3)', 'Right Movement Jerk (px/s3)']].set_index('Timestamp (sec)')
+        df_speed = df[['Timestamp (sec)', 'Left Arm Speed (norm/s)', 'Right Arm Speed (norm/s)']].set_index('Timestamp (sec)')
+        df_jerk = df[['Timestamp (sec)', 'Left Movement Jerk (norm/s3)', 'Right Movement Jerk (norm/s3)']].set_index('Timestamp (sec)')
         df_rom = df[['Timestamp (sec)', 'Left Shoulder Angle (deg)', 'Right Shoulder Angle (deg)']].set_index('Timestamp (sec)')
         
         df_speed.columns = ['Left Arm', 'Right Arm']
@@ -1109,10 +1107,10 @@ if uploaded_file is not None:
                 'Right Hand Y (%)': right_hand_y if right_hand_y is not None else "N/A",
                 'Left Hand Hit': "Yes" if left_hit_this_frame else "No",
                 'Right Hand Hit': "Yes" if right_hit_this_frame else "No",
-                'Left Arm Speed (px/s)': round(left_speed, 1) if (results.pose_landmarks and prev_left_wrist_smooth is not None) else 0.0,
-                'Right Arm Speed (px/s)': round(right_speed, 1) if (results.pose_landmarks and prev_right_wrist_smooth is not None) else 0.0,
-                'Left Movement Jerk (px/s3)': round(left_jerk, 1) if (results.pose_landmarks and prev_left_wrist_smooth is not None) else 0.0,
-                'Right Movement Jerk (px/s3)': round(right_jerk, 1) if (results.pose_landmarks and prev_right_wrist_smooth is not None) else 0.0,
+                'Left Arm Speed (norm/s)': round(left_speed, 1) if (results.pose_landmarks and prev_left_wrist_smooth is not None) else 0.0,
+                'Right Arm Speed (norm/s)': round(right_speed, 1) if (results.pose_landmarks and prev_right_wrist_smooth is not None) else 0.0,
+                'Left Movement Jerk (norm/s3)': round(left_jerk, 1) if (results.pose_landmarks and prev_left_wrist_smooth is not None) else 0.0,
+                'Right Movement Jerk (norm/s3)': round(right_jerk, 1) if (results.pose_landmarks and prev_right_wrist_smooth is not None) else 0.0,
                 'Left Shoulder Angle (deg)': round(left_angle, 1) if results.pose_landmarks else 0.0,
                 'Right Shoulder Angle (deg)': round(right_angle, 1) if results.pose_landmarks else 0.0
             })
@@ -1235,8 +1233,8 @@ DOMINANT: {dominant_side_en} ARM
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
 <span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG SPEED</span>
 <div style="display: flex; gap: 24px;">
-<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_avg_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
-<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_avg_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_avg_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_avg_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
 </div>
 </div>
 
@@ -1244,8 +1242,8 @@ DOMINANT: {dominant_side_en} ARM
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
 <span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">MAX SPEED</span>
 <div style="display: flex; gap: 24px;">
-<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_max_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
-<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_max_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s</span></span>
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_max_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_max_speed_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s</span></span>
 </div>
 </div>
 
@@ -1253,8 +1251,8 @@ DOMINANT: {dominant_side_en} ARM
 <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155;">
 <span style="font-size: 11px; font-weight: 600; color: #94A3B8; letter-spacing: 0.05em;">AVG JERK</span>
 <div style="display: flex; gap: 24px;">
-<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_avg_jerk_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
-<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_avg_jerk_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">px/s³</span></span>
+<span style="color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{left_avg_jerk_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s³</span></span>
+<span style="color: #FB7185; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; width: 85px; text-align: right;">{right_avg_jerk_px:.1f}<span style="font-size: 9px; font-weight: 500; color: #64748B; margin-left: 2px;">norm/s³</span></span>
 </div>
 </div>
 
