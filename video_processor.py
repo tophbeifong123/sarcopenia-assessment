@@ -73,6 +73,7 @@ class FrameResult:
     left_straightness: float = 0.0
     right_straightness: float = 0.0
     dominant_side: str = "WAITING"
+    running_lni: float = 0.0
 
     # CSV row for the frame inspector
     history_row: dict = field(default_factory=dict)
@@ -179,6 +180,7 @@ class VideoProcessor:
             current_time_sec = frame_idx / fps
             is_recording = current_time_sec >= cfg.skip_seconds
             new_logs: list = []
+            running_lni = 0.0
 
             if cfg.mirror_view:
                 frame = cv2.flip(frame, 1)
@@ -297,21 +299,6 @@ class VideoProcessor:
                     if len(self.right_wrist_norm_history) >= 2:
                         right_path_length += dist_3d_norm(self.right_wrist_norm_history[-1], self.right_wrist_norm_history[-2])
 
-                    if left_angle > 60.0:
-                        if not left_arm_raised:
-                            left_arm_raised = True
-                            left_raise_count += 1
-                            new_logs.append(f"[Frame {frame_idx}] Left Arm Raise #{left_raise_count} (Angle: {left_angle:.1f}°)")
-                    elif left_angle < 30.0:
-                        left_arm_raised = False
-                    if right_angle > 60.0:
-                        if not right_arm_raised:
-                            right_arm_raised = True
-                            right_raise_count += 1
-                            new_logs.append(f"[Frame {frame_idx}] Right Arm Raise #{right_raise_count} (Angle: {right_angle:.1f}°)")
-                    elif right_angle < 30.0:
-                        right_arm_raised = False
-
                 dt_safe = 1.0 / fps if fps > 0 else 1.0 / 30.0
                 if prev_left_wrist is not None:
                     left_speed = dist_3d_norm(l_wr, prev_left_wrist) / dt_safe
@@ -336,6 +323,28 @@ class VideoProcessor:
                     self.right_speeds.append(right_speed)
                     self.left_jerks.append(left_jerk)
                     self.right_jerks.append(right_jerk)
+
+                    # Arm Raise Checks (using calculated speed & jerk)
+                    if left_angle > 60.0:
+                        if not left_arm_raised:
+                            left_arm_raised = True
+                            left_raise_count += 1
+                            new_logs.append(
+                                f"[Frame {frame_idx}] 🦾 Left Arm Raise #{left_raise_count} | "
+                                f"Shoulder Angle: {left_angle:.1f}° | Speed: {left_speed:.1f} px/s | Jerk: {left_jerk:.1f} px/s³"
+                            )
+                    elif left_angle < 30.0:
+                        left_arm_raised = False
+                    if right_angle > 60.0:
+                        if not right_arm_raised:
+                            right_arm_raised = True
+                            right_raise_count += 1
+                            new_logs.append(
+                                f"[Frame {frame_idx}] 🦾 Right Arm Raise #{right_raise_count} | "
+                                f"Shoulder Angle: {right_angle:.1f}° | Speed: {right_speed:.1f} px/s | Jerk: {right_jerk:.1f} px/s³"
+                            )
+                    elif right_angle < 30.0:
+                        right_arm_raised = False
 
                 l_wrist_px = (int(l_wr["x"] * width), int(l_wr["y"] * height))
                 r_wrist_px = (int(r_wr["x"] * width), int(r_wr["y"] * height))
@@ -363,6 +372,30 @@ class VideoProcessor:
 
                 draw_pose(annotated, smoothed_landmarks)
 
+                # Calculate running composite LNI (3-axis asymmetry over last 60 frames)
+                if is_recording:
+                    run_l_rom_range = self.left_rom_max - self.left_rom_min if self.left_rom_max != float("-inf") else 0.0
+                    run_r_rom_range = self.right_rom_max - self.right_rom_min if self.right_rom_max != float("-inf") else 0.0
+                    total_rom = run_l_rom_range + run_r_rom_range
+                    rom_asym = abs(run_l_rom_range - run_r_rom_range) / total_rom if total_rom > 1.0 else 0.0
+                    
+                    window_l_speeds = self.left_speeds[-60:] if self.left_speeds else []
+                    window_r_speeds = self.right_speeds[-60:] if self.right_speeds else []
+                    avg_l_speed = float(np.mean(window_l_speeds)) if window_l_speeds else 0.0
+                    avg_r_speed = float(np.mean(window_r_speeds)) if window_r_speeds else 0.0
+                    total_speed = avg_l_speed + avg_r_speed
+                    speed_asym = abs(avg_l_speed - avg_r_speed) / total_speed if total_speed > 0.1 else 0.0
+                    
+                    window_l_jerks = self.left_jerks[-60:] if self.left_jerks else []
+                    window_r_jerks = self.right_jerks[-60:] if self.right_jerks else []
+                    avg_l_jerk = float(np.mean(window_l_jerks)) if window_l_jerks else 0.0
+                    avg_r_jerk = float(np.mean(window_r_jerks)) if window_r_jerks else 0.0
+                    total_jerk = avg_l_jerk + avg_r_jerk
+                    jerk_asym = abs(avg_l_jerk - avg_r_jerk) / total_jerk if total_jerk > 0.1 else 0.0
+                    
+                    running_lni = speed_asym * 0.40 + rom_asym * 0.30 + jerk_asym * 0.30
+                    running_lni = min(1.0, max(0.0, running_lni))
+
             # --- target appearance state machine ---
             if is_recording:
                 for cell_num in current_active_cells:
@@ -375,7 +408,14 @@ class VideoProcessor:
                         consecutive_frames_counter[cell_num] = {"Left": 0, "Right": 0}
                         col = (cell_num - 1) % 3
                         side = "LEFT" if col == 0 else "RIGHT" if col == 2 else "CENTER"
-                        new_logs.append(f"[Frame {frame_idx}] Target {self.target_instance_counter} appeared on {side}")
+                        left_pos_str = f"({left_wrist_pt[0]}, {left_wrist_pt[1]})" if left_wrist_pt else "N/A"
+                        right_pos_str = f"({right_wrist_pt[0]}, {right_wrist_pt[1]})" if right_wrist_pt else "N/A"
+                        new_logs.append(
+                            f"[Frame {frame_idx}] 🎯 Target {self.target_instance_counter} appeared on {side} (Cell {cell_num}) | "
+                            f"L-Hand: {left_pos_str}, R-Hand: {right_pos_str} | "
+                            f"L-Angle: {left_angle:.1f}°, R-Angle: {right_angle:.1f}° | "
+                            f"Running LNI: {running_lni * 100.0:.1f}%"
+                        )
                         trial_start_times[self.target_instance_counter] = frame_idx / fps
             else:
                 active_targets_map = {}
@@ -435,7 +475,14 @@ class VideoProcessor:
                                         "jerk": jk_val
                                     })
                                     
-                                    new_logs.append(f"[Frame {frame_idx}] Target {inst_id} HIT by {hand_side.upper()} Hand")
+                                    new_logs.append(
+                                        f"[Frame {frame_idx}] 💥 Target {inst_id} (Cell {cell_num}) HIT by {hand_side.upper()} Hand | "
+                                        f"Reach Time: {reaction:.2f}s | Path Straightness: {st_val * 100.0:.1f}% | "
+                                        f"Movement Jerk: {jk_val:.1f} px/s³ | Speed at Hit: {left_speed if hand_side == 'Left' else right_speed:.1f} px/s | "
+                                        f"Shoulder Angle: {left_angle if hand_side == 'Left' else right_angle:.1f}° | "
+                                        f"Hand Coord: ({pt[0]}, {pt[1]}) | "
+                                        f"Total Hits: {self.total_hits + 1} (L: {self.left_hits_count + (1 if hand_side == 'Left' else 0)}, R: {self.right_hits_count + (1 if hand_side == 'Right' else 0)})"
+                                    )
                                     self.total_hits += 1
                                     self.reaction_times.append(reaction)
                                     if hand_side == "Left":
@@ -499,7 +546,14 @@ class VideoProcessor:
                                     "jerk": jk_val
                                 })
                                 
-                                new_logs.append(f"[Frame {frame_idx}] Target {inst_id} HIT by {near_hand.upper()} Hand")
+                                new_logs.append(
+                                    f"[Frame {frame_idx}] 💥 Target {inst_id} (Cell {cell_num}) HIT by {near_hand.upper()} Hand [Proximity Fallback] | "
+                                    f"Reach Time: {reaction:.2f}s | Path Straightness: {st_val * 100.0:.1f}% | "
+                                    f"Movement Jerk: {jk_val:.1f} px/s³ | Speed: {left_speed if near_hand == 'Left' else right_speed:.1f} px/s | "
+                                    f"Shoulder Angle: {left_angle if near_hand == 'Left' else right_angle:.1f}° | "
+                                    f"Hand Coord: ({hands_pts[near_hand][0]}, {hands_pts[near_hand][1]}) | "
+                                    f"Total Hits: {self.total_hits + 1} (L: {self.left_hits_count + (1 if near_hand == 'Left' else 0)}, R: {self.right_hits_count + (1 if near_hand == 'Right' else 0)})"
+                                )
                                 self.total_hits += 1
                                 self.reaction_times.append(reaction)
                                 if near_hand == "Left":
@@ -511,7 +565,15 @@ class VideoProcessor:
                                 cv2.putText(annotated, "HIT!", (x1 + 10, y1 + cell_h - 10),
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                             else:
-                                new_logs.append(f"[Frame {frame_idx}] Target {inst_id} disappeared (MISSED)")
+                                left_pos_str = f"({hands_pts['Left'][0]}, {hands_pts['Left'][1]})" if hands_pts['Left'] else "N/A"
+                                right_pos_str = f"({hands_pts['Right'][0]}, {hands_pts['Right'][1]})" if hands_pts['Right'] else "N/A"
+                                new_logs.append(
+                                    f"[Frame {frame_idx}] ⚠️ Target {inst_id} disappeared (MISSED) | "
+                                    f"L-Hand: {left_pos_str}, R-Hand: {right_pos_str} | "
+                                    f"L-Speed: {left_speed:.1f} px/s, R-Speed: {right_speed:.1f} px/s | "
+                                    f"L-Angle: {left_angle:.1f}°, R-Angle: {right_angle:.1f}° | "
+                                    f"Running LNI: {running_lni * 100.0:.1f}%"
+                                )
                                 self.total_misses += 1
                         del active_targets_map[cell_num]
 
@@ -566,6 +628,18 @@ class VideoProcessor:
             left_hit = any(hits_log.get(i, {}).get("Left", False) for i in active_targets_map.values())
             right_hit = any(hits_log.get(i, {}).get("Right", False) for i in active_targets_map.values())
 
+            if has_pose and is_recording and frame_idx % 30 == 0:
+                left_pos_str = f"({left_wrist_pt[0]}, {left_wrist_pt[1]})" if left_wrist_pt else "N/A"
+                right_pos_str = f"({right_wrist_pt[0]}, {right_wrist_pt[1]})" if right_wrist_pt else "N/A"
+                new_logs.append(
+                    f"[Frame {frame_idx}] ⏱️ Time: {current_time_sec:.1f}s | "
+                    f"L-Hand: {left_pos_str} | R-Hand: {right_pos_str} | "
+                    f"L-Speed: {left_speed:.1f} px/s, L-Angle: {left_angle:.1f}°, L-Jerk: {left_jerk:.1f} px/s³ | "
+                    f"R-Speed: {right_speed:.1f} px/s, R-Angle: {right_angle:.1f}°, R-Jerk: {right_jerk:.1f} px/s³ | "
+                    f"Running LNI: {running_lni * 100.0:.1f}% | "
+                    f"Hits: {self.total_hits} (L: {self.left_hits_count}, R: {self.right_hits_count})"
+                )
+
             history_row = {
                 "Frame Index": frame_idx,
                 "Timestamp (sec)": current_time_sec,
@@ -586,6 +660,7 @@ class VideoProcessor:
                 "Right Movement Jerk (px/s3)": round(right_jerk, 1) if (has_pose and prev_right_wrist is not None) else 0.0,
                 "Left Shoulder Angle (deg)": round(left_angle, 1) if has_pose else 0.0,
                 "Right Shoulder Angle (deg)": round(right_angle, 1) if has_pose else 0.0,
+                "Running LNI (%)": round(running_lni * 100.0, 1),
             }
 
             yield FrameResult(
@@ -612,6 +687,7 @@ class VideoProcessor:
                 right_straightness=right_straightness,
                 dominant_side=dominant_side,
                 history_row=history_row,
+                running_lni=running_lni,
             )
 
     # -- final summary ----------------------------------------------------

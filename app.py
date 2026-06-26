@@ -504,13 +504,34 @@ with col2:
         formatted = "<br>".join(colored_lines[::-1])  # latest on top
         log_display_placeholder.markdown(f"<div class='log-container'>{formatted}</div>", unsafe_allow_html=True)
 
-        # Download button
-        log_text = "\n".join(lines)
+        # Download button (Excel format)
+        import io
+        parsed_events = []
+        for line in lines:
+            if line.startswith("[Frame "):
+                try:
+                    parts = line.split("]", 1)
+                    frame_num = int(parts[0].replace("[Frame ", "").strip())
+                    desc = parts[1].strip()
+                except Exception:
+                    frame_num = None
+                    desc = line
+                parsed_events.append({"Frame": frame_num, "Event Log": desc})
+            else:
+                parsed_events.append({"Frame": None, "Event Log": line})
+        
+        event_df = pd.DataFrame(parsed_events)
+        
+        buffer_event = io.BytesIO()
+        with pd.ExcelWriter(buffer_event, engine='openpyxl') as writer:
+            event_df.to_excel(writer, index=False, sheet_name="Event Logs")
+        excel_event_data = buffer_event.getvalue()
+        
         st.download_button(
-            label="📥 ดาวน์โหลด Event Logs (.txt)",
-            data=log_text,
-            file_name="dexterity_event_logs.txt",
-            mime="text/plain",
+            label="📥 ดาวน์โหลด Event Logs (Excel)",
+            data=excel_event_data,
+            file_name="dexterity_event_logs.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="dl_btn_fragment",
         )
 
@@ -540,7 +561,9 @@ else:
     _init_kin_html = get_kinematics_card_html(
         frame_idx=0, fps=30.0, total_hits=0,
         left_hits=0, right_hits=0,
-        left_speeds=[], right_speeds=[], left_jerks=[], right_jerks=[],
+        left_avg_reach_time=0.0, right_avg_reach_time=0.0,
+        left_max_speed=0.0, right_max_speed=0.0,
+        left_jerks=[], right_jerks=[],
         left_rom_min=float("inf"), left_rom_max=float("-inf"),
         right_rom_min=float("inf"), right_rom_max=float("-inf"),
         left_current_rom=0.0, right_current_rom=0.0,
@@ -555,17 +578,22 @@ report_placeholder = st.empty()
 
 # --- Telemetry Charts Section ---
 st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
-st.subheader("📊 กราฟวิเคราะห์การเคลื่อนไหว (Kinematics Telemetry Charts)")
+st.subheader("📊 กราฟวิเคราะห์การเคลื่อนไหวต่อเนื่อง (Continuous Telemetry Charts)")
 
-chart_col1, chart_col2, chart_col3 = st.columns(3)
-with chart_col1:
+row1_col1, row1_col2 = st.columns(2)
+with row1_col1:
     st.markdown("<b>ความเร็วของแขน (Arm Speed - px/s)</b>", unsafe_allow_html=True)
     speed_chart_placeholder = st.empty()
-with chart_col2:
-    st.markdown("<b>ความเรียบเนียนของข้อต่อ (Movement Jerk)</b>", unsafe_allow_html=True)
+with row1_col2:
+    st.markdown("<b>ดัชนีความไม่สมมาตรการเคลื่อนไหว (Running LNI - %)</b>", unsafe_allow_html=True)
+    lni_chart_placeholder = st.empty()
+
+row2_col1, row2_col2 = st.columns(2)
+with row2_col1:
+    st.markdown("<b>ความสั่นสะท้านของข้อต่อ (Movement Jerk - px/s³)</b>", unsafe_allow_html=True)
     jerk_chart_placeholder = st.empty()
-with chart_col3:
-    st.markdown("<b>องศาการขยับไหล่ (Shoulder ROM - degrees)</b>", unsafe_allow_html=True)
+with row2_col2:
+    st.markdown("<b>องศาการขยับข้อไหล่ (Shoulder ROM - degrees)</b>", unsafe_allow_html=True)
     rom_chart_placeholder = st.empty()
 
 
@@ -578,12 +606,19 @@ def update_telemetry_charts(history_list):
     df_speed = df[["Timestamp (sec)", "Left Arm Speed (px/s)", "Right Arm Speed (px/s)"]].set_index("Timestamp (sec)")
     df_jerk = df[["Timestamp (sec)", "Left Movement Jerk (px/s3)", "Right Movement Jerk (px/s3)"]].set_index("Timestamp (sec)")
     df_rom = df[["Timestamp (sec)", "Left Shoulder Angle (deg)", "Right Shoulder Angle (deg)"]].set_index("Timestamp (sec)")
+    
     df_speed.columns = ["Left Arm", "Right Arm"]
     df_jerk.columns = ["Left Arm", "Right Arm"]
     df_rom.columns = ["Left Arm", "Right Arm"]
+    
     speed_chart_placeholder.line_chart(df_speed, height=200)
     jerk_chart_placeholder.line_chart(df_jerk, height=200)
     rom_chart_placeholder.line_chart(df_rom, height=200)
+    
+    if "Running LNI (%)" in df.columns:
+        df_lni = df[["Timestamp (sec)", "Running LNI (%)"]].set_index("Timestamp (sec)")
+        df_lni.columns = ["Running LNI Asymmetry"]
+        lni_chart_placeholder.line_chart(df_lni, height=200)
 
 
 # Initialize chart placeholders
@@ -593,6 +628,7 @@ else:
     speed_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
     jerk_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
     rom_chart_placeholder.info("รอข้อมูลการเคลื่อนไหว...")
+    lni_chart_placeholder.info("รอข้อมูลความไม่สมมาตร (LNI)...")
 
 
 # --- Processing Loop ---
@@ -700,14 +736,23 @@ if uploaded_file is not None:
                 st.session_state.last_status_text = status_text
 
                 # Live kinematics card
+                left_reaches = [r for r in processor.reaches if r["arm"] == "left"]
+                right_reaches = [r for r in processor.reaches if r["arm"] == "right"]
+                left_avg_reach_time = float(np.mean([r["reachTimeMs"] for r in left_reaches])) / 1000.0 if left_reaches else 0.0
+                right_avg_reach_time = float(np.mean([r["reachTimeMs"] for r in right_reaches])) / 1000.0 if right_reaches else 0.0
+                left_max_speed = float(np.max(result.left_speeds)) if result.left_speeds else 0.0
+                right_max_speed = float(np.max(result.right_speeds)) if result.right_speeds else 0.0
+
                 kin_html = get_kinematics_card_html(
                     frame_idx=result.frame_idx,
                     fps=fps,
                     total_hits=result.total_hits,
                     left_hits=result.left_hits,
                     right_hits=result.right_hits,
-                    left_speeds=result.left_speeds,
-                    right_speeds=result.right_speeds,
+                    left_avg_reach_time=left_avg_reach_time,
+                    right_avg_reach_time=right_avg_reach_time,
+                    left_max_speed=left_max_speed,
+                    right_max_speed=right_max_speed,
                     left_jerks=result.left_jerks,
                     right_jerks=result.right_jerks,
                     left_rom_min=result.left_rom_min,
@@ -751,8 +796,8 @@ if uploaded_file is not None:
             left_hits=summary["left_hits"],
             right_hits=summary["right_hits"],
             dominant_side_en=summary["dominant_side_en"],
-            left_avg_speed=summary["left_avg_speed"],
-            right_avg_speed=summary["right_avg_speed"],
+            left_avg_reach_time=summary["left_avg_reach_time"] / 1000.0,
+            right_avg_reach_time=summary["right_avg_reach_time"] / 1000.0,
             left_max_speed=summary["left_max_speed"],
             right_max_speed=summary["right_max_speed"],
             left_avg_jerk=summary["left_avg_jerk"],
@@ -806,27 +851,75 @@ if st.session_state.analysis_completed:
         st.markdown("<hr style='border-color: #143D66;'>", unsafe_allow_html=True)
         st.subheader("📊 กราฟเปรียบเทียบผลการทดสอบ (Performance Comparison Charts)")
         
-        # 1. Bar Chart: Left vs Right Comparison
+        # 1. Bar Chart: Left vs Right Comparison inside Tabs (Speed, Precision, ROM & Frequency)
         chart_col1, chart_col2 = st.columns(2)
         with chart_col1:
-            st.markdown("<b>เปรียบเทียบแขนซ้าย vs แขนขวา (Left vs Right Comparison)</b>", unsafe_allow_html=True)
+            st.markdown("<b>เปรียบเทียบเชิงลึก แขนซ้าย vs แขนขวา (Detailed Left vs Right Kinematics)</b>", unsafe_allow_html=True)
             left_jerk = summary.get("left_avg_jerk", 0.0)
             right_jerk = summary.get("right_avg_jerk", 0.0)
             
-            bar_df = pd.DataFrame({
-                "Metric": ["Reach Duration (s)", "Path Straightness (%)", "Smoothness Index"],
-                "Left Arm": [
-                    summary.get("left_avg_reach_time", 0.0) / 1000.0,
-                    summary.get("left_avg_straightness", 1.0) * 100.0,
-                    1.0 / (1.0 + left_jerk * 0.01) if left_jerk > 0 else 1.0
-                ],
-                "Right Arm": [
-                    summary.get("right_avg_reach_time", 0.0) / 1000.0,
-                    summary.get("right_avg_straightness", 1.0) * 100.0,
-                    1.0 / (1.0 + right_jerk * 0.01) if right_jerk > 0 else 1.0
-                ]
-            }).set_index("Metric")
-            st.bar_chart(bar_df)
+            tab_speed, tab_precision, tab_rom = st.tabs([
+                "🚀 ความเร็ว & ระยะเวลา (Speed & Duration)", 
+                "🎯 ความตรง & ความนิ่ง (Precision & Smoothness)", 
+                "📐 องศาไหล่ & ความถี่ (ROM & Touches)"
+            ])
+            
+            with tab_speed:
+                col_spd1, col_spd2 = st.columns(2)
+                with col_spd1:
+                    st.markdown("<p style='font-size: 13px; margin-bottom: 2px;'><b>เวลาเอื้อมเฉลี่ย (Reach Duration - วินาที)</b></p>", unsafe_allow_html=True)
+                    dur_df = pd.DataFrame({
+                        "Metric": ["Duration (s)"],
+                        "Left Arm": [summary.get("left_avg_reach_time", 0.0) / 1000.0],
+                        "Right Arm": [summary.get("right_avg_reach_time", 0.0) / 1000.0]
+                    }).set_index("Metric")
+                    st.bar_chart(dur_df)
+                with col_spd2:
+                    st.markdown("<p style='font-size: 13px; margin-bottom: 2px;'><b>ความเร็วเอื้อม (Speed - px/s)</b></p>", unsafe_allow_html=True)
+                    spd_df = pd.DataFrame({
+                        "Metric": ["Avg Speed (px/s)", "Max Speed (px/s)"],
+                        "Left Arm": [summary.get("left_avg_speed", 0.0), summary.get("left_max_speed", 0.0)],
+                        "Right Arm": [summary.get("right_avg_speed", 0.0), summary.get("right_max_speed", 0.0)]
+                    }).set_index("Metric")
+                    st.bar_chart(spd_df)
+                    
+            with tab_precision:
+                col_prc1, col_prc2 = st.columns(2)
+                with col_prc1:
+                    st.markdown("<p style='font-size: 13px; margin-bottom: 2px;'><b>ความตรงของเส้นทาง (Straightness - %)</b></p>", unsafe_allow_html=True)
+                    str_df = pd.DataFrame({
+                        "Metric": ["Straightness (%)"],
+                        "Left Arm": [summary.get("left_avg_straightness", 1.0) * 100.0],
+                        "Right Arm": [summary.get("right_avg_straightness", 1.0) * 100.0]
+                    }).set_index("Metric")
+                    st.bar_chart(str_df)
+                with col_prc2:
+                    st.markdown("<p style='font-size: 13px; margin-bottom: 2px;'><b>ความสั่นสะท้าน (Movement Jerk - px/s³)</b></p>", unsafe_allow_html=True)
+                    jrk_df = pd.DataFrame({
+                        "Metric": ["Avg Jerk (px/s³)"],
+                        "Left Arm": [summary.get("left_avg_jerk", 0.0)],
+                        "Right Arm": [summary.get("right_avg_jerk", 0.0)]
+                    }).set_index("Metric")
+                    st.bar_chart(jrk_df)
+                    
+            with tab_rom:
+                col_rm1, col_rm2 = st.columns(2)
+                with col_rm1:
+                    st.markdown("<p style='font-size: 13px; margin-bottom: 2px;'><b>องศาไหล่รวม (Shoulder ROM - องศา)</b></p>", unsafe_allow_html=True)
+                    rom_df = pd.DataFrame({
+                        "Metric": ["Shoulder ROM (deg)"],
+                        "Left Arm": [summary.get("left_rom_range", 0.0)],
+                        "Right Arm": [summary.get("right_rom_range", 0.0)]
+                    }).set_index("Metric")
+                    st.bar_chart(rom_df)
+                with col_rm2:
+                    st.markdown("<p style='font-size: 13px; margin-bottom: 2px;'><b>ความถี่ในการแตะสำเร็จ (Touches - ครั้ง)</b></p>", unsafe_allow_html=True)
+                    hit_df = pd.DataFrame({
+                        "Metric": ["Touches (Hits)"],
+                        "Left Arm": [summary.get("left_reaches", 0)],
+                        "Right Arm": [summary.get("right_reaches", 0)]
+                    }).set_index("Metric")
+                    st.bar_chart(hit_df)
             
         with chart_col2:
             st.markdown("<b>ระยะเวลาการเอื้อมแตะแต่ละครั้ง (Individual Reach Times)</b>", unsafe_allow_html=True)
@@ -903,14 +996,21 @@ if st.session_state.analysis_completed:
 
     col_dl, col_search = st.columns([1, 2])
     with col_dl:
-        csv_data = df_history.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            label="📥 ดาวน์โหลดข้อมูลทุกเฟรม (CSV)",
-            data=csv_data,
-            file_name="detailed_frame_log.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+        if not df_history.empty:
+            import io
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_history.to_excel(writer, index=False, sheet_name="Frame Telemetry")
+            excel_data = buffer.getvalue()
+            st.download_button(
+                label="📥 ดาวน์โหลดข้อมูลทุกเฟรม (Excel)",
+                data=excel_data,
+                file_name="detailed_frame_log.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        else:
+            st.warning("ไม่มีข้อมูลเฟรมสำหรับการดาวน์โหลด")
 
     with col_search:
         search_frame = st.number_input("ป้อนหมายเลขเฟรมที่ต้องการค้นหา (เช่น 120):", min_value=1, step=1, value=1)

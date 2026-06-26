@@ -39,8 +39,10 @@ def get_kinematics_card_html(
     total_hits,
     left_hits,
     right_hits,
-    left_speeds,
-    right_speeds,
+    left_avg_reach_time,
+    right_avg_reach_time,
+    left_max_speed,
+    right_max_speed,
     left_jerks,
     right_jerks,
     left_rom_min,
@@ -56,10 +58,6 @@ def get_kinematics_card_html(
     """Live telemetry card shown beside the video during processing."""
     duration_sec = frame_idx / fps if fps > 0 else 0.0
 
-    left_avg_speed = _safe_mean(left_speeds)
-    right_avg_speed = _safe_mean(right_speeds)
-    left_max_speed = _safe_max(left_speeds)
-    right_max_speed = _safe_max(right_speeds)
     left_avg_jerk = _safe_mean(left_jerks)
     right_avg_jerk = _safe_mean(right_jerks)
     left_rom_range = _rom_range(left_rom_min, left_rom_max)
@@ -74,7 +72,7 @@ def get_kinematics_card_html(
 
     rows = (
         _metric_row("TARGET HITS", f"{left_hits}", f"{right_hits}", "", 75, 12, 8, "1px solid rgba(255,255,255,0.05)")
-        + _metric_row("AVG SPEED", f"{left_avg_speed:.1f}", f"{right_avg_speed:.1f}", "px/s", 75, 12, 8, "1px solid rgba(255,255,255,0.05)")
+        + _metric_row("AVG REACH TIME", f"{left_avg_reach_time:.2f}", f"{right_avg_reach_time:.2f}", "s", 75, 12, 8, "1px solid rgba(255,255,255,0.05)")
         + _metric_row("MAX SPEED", f"{left_max_speed:.1f}", f"{right_max_speed:.1f}", "px/s", 75, 12, 8, "1px solid rgba(255,255,255,0.05)")
         + _metric_row("AVG JERK", f"{left_avg_jerk:.1f}", f"{right_avg_jerk:.1f}", "px/s\u00b3", 75, 12, 8, "1px solid rgba(255,255,255,0.05)")
         + _metric_row("ROM RANGE", f"{left_rom_range:.0f}", f"{right_rom_range:.0f}", "\u00b0", 75, 12, 8, "1px solid rgba(255,255,255,0.05)")
@@ -129,8 +127,8 @@ def get_report_card_html(
     left_hits,
     right_hits,
     dominant_side_en,
-    left_avg_speed,
-    right_avg_speed,
+    left_avg_reach_time,
+    right_avg_reach_time,
     left_max_speed,
     right_max_speed,
     left_avg_jerk,
@@ -149,7 +147,7 @@ def get_report_card_html(
 
     rows = (
         _metric_row("TARGET HITS", f"{left_hits}", f"{right_hits}", "", 85, 13, 9, "1px solid #334155")
-        + _metric_row("AVG SPEED", f"{left_avg_speed:.1f}", f"{right_avg_speed:.1f}", "px/s", 85, 13, 9, "1px solid #334155")
+        + _metric_row("AVG REACH TIME", f"{left_avg_reach_time:.2f}", f"{right_avg_reach_time:.2f}", "s", 85, 13, 9, "1px solid #334155")
         + _metric_row("MAX SPEED", f"{left_max_speed:.1f}", f"{right_max_speed:.1f}", "px/s", 85, 13, 9, "1px solid #334155")
         + _metric_row("AVG JERK", f"{left_avg_jerk:.1f}", f"{right_avg_jerk:.1f}", "px/s\u00b3", 85, 13, 9, "1px solid #334155")
         + _metric_row("ROM RANGE", f"{left_rom_range:.0f}", f"{right_rom_range:.0f}", "\u00b0", 85, 13, 9, "1px solid #334155")
