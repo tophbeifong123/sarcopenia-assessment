@@ -4,7 +4,7 @@ import React, { useRef, useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { KinematicsBuffer, type FrameData } from "@/lib/kinematics";
 import MetricsPanel from "@/components/MetricsPanel";
-import { TestState, GameResults, ReachRecord, processHit, aggregateResults, getRandomCellWithExclusions, type PathPoint } from "@/lib/game-engine";
+import { TestState, GameResults, ReachRecord, processHit, aggregateResults, getBalancedRandomCell, type PathPoint } from "@/lib/game-engine";
 import { playDing, playStartChime, playCompleteChime, playCountdownBeep } from "@/lib/audio";
 
 // Dynamic imports — no SSR for webcam/chart components
@@ -167,7 +167,7 @@ export default function HomePage() {
     reachesRef.current = [];
     setScore(0);
     setCountdown(90);
-    const startCell = Math.floor(Math.random() * 9);
+    const startCell = getBalancedRandomCell([], []);
     setActiveCell(startCell);
     setResults(null);
     setReport(null);
@@ -270,8 +270,9 @@ export default function HomePage() {
       if (leftHandCell !== -1) exclusions.push(leftHandCell);
       if (rightHandCell !== -1) exclusions.push(rightHandCell);
 
-      // Choose next cell with exclusions
-      const nextCell = getRandomCellWithExclusions(exclusions);
+      // Choose next cell with exclusions and column balancing
+      const cellHistory = reachesRef.current.map((r) => r.targetCell);
+      const nextCell = getBalancedRandomCell(exclusions, cellHistory);
       setActiveCell(nextCell);
       reachStartTimeRef.current = performance.now();
     }, 400); // 400ms delay for clear visual gap

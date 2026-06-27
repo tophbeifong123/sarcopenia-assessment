@@ -151,6 +151,86 @@ export function getRandomCellWithExclusions(excludeIndices: number[]): number {
   return possibleCells[randIdx];
 }
 
+/**
+ * Pick a random cell index that is NOT in the exclude list,
+ * while balancing the selections between Left, Center, and Right columns.
+ * 
+ * Column mapping:
+ * - Left (Col 0): cells 0, 3, 6
+ * - Center (Col 1): cells 1, 4, 7
+ * - Right (Col 2): cells 2, 5, 8
+ */
+export function getBalancedRandomCell(
+  excludeIndices: number[],
+  cellHistory: number[]
+): number {
+  const possibleCells: number[] = [];
+  for (let i = 0; i < GRID_TOTAL; i++) {
+    if (!excludeIndices.includes(i)) {
+      possibleCells.push(i);
+    }
+  }
+
+  if (possibleCells.length === 0) {
+    // Fallback: pick any random cell
+    return Math.floor(Math.random() * GRID_TOTAL);
+  }
+
+  // 1. Calculate column index for each cell in history
+  const getCol = (cell: number) => cell % GRID_COLS;
+
+  // 2. Count occurrences of each column in history
+  const colCounts = [0, 0, 0];
+  for (const cell of cellHistory) {
+    const col = getCol(cell);
+    if (col >= 0 && col < 3) {
+      colCounts[col]++;
+    }
+  }
+
+  // 3. Among the possible (non-excluded) cells, group them by column
+  const cellsByCol: Record<number, number[]> = { 0: [], 1: [], 2: [] };
+  for (const cell of possibleCells) {
+    const col = getCol(cell);
+    cellsByCol[col].push(cell);
+  }
+
+  // 4. Find the minimum column selection count among the columns that have at least one possible cell
+  let minCount = Infinity;
+  for (let col = 0; col < 3; col++) {
+    if (cellsByCol[col].length > 0) {
+      if (colCounts[col] < minCount) {
+        minCount = colCounts[col];
+      }
+    }
+  }
+
+  // 5. Find all columns that share this minimum count (and have possible cells)
+  const candidateCols: number[] = [];
+  for (let col = 0; col < 3; col++) {
+    if (cellsByCol[col].length > 0 && colCounts[col] === minCount) {
+      candidateCols.push(col);
+    }
+  }
+
+  // 6. Gather all possible cells belonging to these candidate columns
+  const candidateCells: number[] = [];
+  for (const col of candidateCols) {
+    candidateCells.push(...cellsByCol[col]);
+  }
+
+  if (candidateCells.length === 0) {
+    // Fallback: pick any possible cell
+    const randIdx = Math.floor(Math.random() * possibleCells.length);
+    return possibleCells[randIdx];
+  }
+
+  // 7. Pick a random cell from candidate cells
+  const randIdx = Math.floor(Math.random() * candidateCells.length);
+  return candidateCells[randIdx];
+}
+
+
 // ──────── Reach Metrics ────────
 
 /**
